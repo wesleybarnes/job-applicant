@@ -22,6 +22,7 @@ function Spinner() {
 }
 
 function BackendError({ onRetry }) {
+  const { signOut } = useAuth()
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0a0618' }}>
       <div className="text-center max-w-sm">
@@ -30,14 +31,17 @@ function BackendError({ onRetry }) {
         </div>
         <h2 className="font-bold text-white text-xl mb-2">Can't reach the server</h2>
         <p className="text-primary-400 text-sm mb-6 leading-relaxed">
-          The backend isn't responding. This is usually a temporary issue — please try again.
+          The backend isn't responding. Try again, or sign out and back in.
         </p>
-        <button
-          onClick={onRetry}
-          className="btn-primary px-8"
-        >
-          Retry
-        </button>
+        <div className="flex flex-col gap-3">
+          <button onClick={onRetry} className="btn-primary px-8">Retry</button>
+          <button
+            onClick={() => signOut({ redirectUrl: '/' })}
+            className="text-sm text-primary-400 hover:text-white transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -85,11 +89,11 @@ function InnerApp() {
     setLoading(true)
 
     const fetchUser = async () => {
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 4; i++) {
         if (cancelled) return
         try {
           const token = await getToken()
-          if (!token) { await new Promise(r => setTimeout(r, 600)); continue }
+          if (!token) { await new Promise(r => setTimeout(r, 500)); continue }
           const u = await getMe()
           if (!cancelled) {
             setAppUser(u)
@@ -98,15 +102,15 @@ function InnerApp() {
           }
           return
         } catch (e) {
-          // 404 means no profile yet — not a network error, go to onboarding
+          // 404 = no profile yet (new user) → go to onboarding, not an error
           if (e?.response?.status === 404) {
             if (!cancelled) { setAppUser(null); setFetchError(false); setLoading(false) }
             return
           }
-          await new Promise(r => setTimeout(r, 700 * (i + 1)))
+          if (i < 3) await new Promise(r => setTimeout(r, 800))
         }
       }
-      // All retries exhausted — show error, do NOT redirect to onboarding
+      // All retries exhausted — show error page, never redirect to onboarding
       if (!cancelled) {
         setFetchError(true)
         setLoading(false)
