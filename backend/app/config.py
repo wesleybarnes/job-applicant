@@ -40,6 +40,11 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+# Railway's PostgreSQL plugin exports DATABASE_URL as postgres:// but
+# SQLAlchemy 1.4+ requires postgresql://  — fix it transparently.
+if settings.database_url.startswith("postgres://"):
+    settings.database_url = settings.database_url.replace("postgres://", "postgresql://", 1)
+
 # Credit costs per action
 CREDITS_AI_APPLY = 1        # generate cover letter + analysis
 CREDITS_BROWSER_APPLY = 3   # full browser form filling + submit
