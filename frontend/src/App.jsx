@@ -15,21 +15,42 @@ export const useAppUser = () => useContext(AppUserContext)
 
 function Spinner() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="animate-spin w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full" />
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0618' }}>
+      <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full" />
+    </div>
+  )
+}
+
+function BackendError({ onRetry }) {
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0a0618' }}>
+      <div className="text-center max-w-sm">
+        <div className="w-14 h-14 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+          <span className="text-2xl">⚠️</span>
+        </div>
+        <h2 className="font-bold text-white text-xl mb-2">Can't reach the server</h2>
+        <p className="text-primary-400 text-sm mb-6 leading-relaxed">
+          The backend isn't responding. This is usually a temporary issue — please try again.
+        </p>
+        <button
+          onClick={onRetry}
+          className="btn-primary px-8"
+        >
+          Retry
+        </button>
+      </div>
     </div>
   )
 }
 
 function AuthPage({ children }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-900 to-indigo-800 flex items-center justify-center p-4">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #120630 0%, #3b0764 50%, #1e0a4a 100%)' }}>
       {children}
     </div>
   )
 }
 
-// Gate: redirect to /sign-in if not authenticated, show spinner while loading
 function RequireAuth({ children }) {
   const { isSignedIn, isLoaded } = useAuth()
   const location = useLocation()
@@ -38,7 +59,6 @@ function RequireAuth({ children }) {
   return children
 }
 
-// Gate: redirect to /dashboard if already authenticated
 function RequireGuest({ children }) {
   const { isSignedIn, isLoaded } = useAuth()
   if (!isLoaded) return <Spinner />
@@ -46,12 +66,13 @@ function RequireGuest({ children }) {
   return children
 }
 
-// Inner app — only rendered when signed in, handles backend user fetch
 function InnerApp() {
   const { getToken, isLoaded, isSignedIn } = useAuth()
   const { user: clerkUser } = useUser()
   const [appUser, setAppUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(false)
+  const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
     setupAuthInterceptor(() => getToken())
@@ -60,27 +81,41 @@ function InnerApp() {
   useEffect(() => {
     if (!isLoaded || !isSignedIn) return
     let cancelled = false
+    setFetchError(false)
+    setLoading(true)
 
     const fetchUser = async () => {
-      // Retry up to 8 times with backoff — token may not be ready immediately after redirect
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 10; i++) {
         if (cancelled) return
         try {
           const token = await getToken()
-          if (!token) { await new Promise(r => setTimeout(r, 500)); continue }
+          if (!token) { await new Promise(r => setTimeout(r, 600)); continue }
           const u = await getMe()
-          if (!cancelled) { setAppUser(u); setLoading(false) }
+          if (!cancelled) {
+            setAppUser(u)
+            setFetchError(false)
+            setLoading(false)
+          }
           return
-        } catch {
-          await new Promise(r => setTimeout(r, 500))
+        } catch (e) {
+          // 404 means no profile yet — not a network error, go to onboarding
+          if (e?.response?.status === 404) {
+            if (!cancelled) { setAppUser(null); setFetchError(false); setLoading(false) }
+            return
+          }
+          await new Promise(r => setTimeout(r, 700 * (i + 1)))
         }
       }
-      if (!cancelled) setLoading(false)
+      // All retries exhausted — show error, do NOT redirect to onboarding
+      if (!cancelled) {
+        setFetchError(true)
+        setLoading(false)
+      }
     }
 
     fetchUser()
     return () => { cancelled = true }
-  }, [isLoaded, isSignedIn])
+  }, [isLoaded, isSignedIn, retryCount])
 
   const refreshUser = async () => {
     const u = await getMe()
@@ -90,6 +125,12 @@ function InnerApp() {
 
   if (loading) return <Spinner />
 
+  // Backend unreachable — show error page, never redirect to onboarding
+  if (fetchError) {
+    return <BackendError onRetry={() => setRetryCount(c => c + 1)} />
+  }
+
+  // Onboarding not complete (new user or 404 from backend)
   if (!appUser?.onboarding_complete) {
     return (
       <AppUserContext.Provider value={{ appUser, refreshUser }}>
@@ -122,7 +163,6 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public routes */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/sign-in/*" element={
           <RequireGuest>
@@ -138,8 +178,6 @@ export default function App() {
             </AuthPage>
           </RequireGuest>
         } />
-
-        {/* Protected routes */}
         <Route path="/*" element={
           <RequireAuth>
             <InnerApp />
