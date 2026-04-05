@@ -15,8 +15,9 @@ export default function HuntView({ huntId, onClose }) {
   const [finalMessage, setFinalMessage] = useState(null)
   const [tab, setTab]                 = useState('decisions')
   const [instruction, setInstruction] = useState('')
-  const logRef    = useRef(null)
-  const imgRef    = useRef(null)
+  const logRef              = useRef(null)
+  const imgRef              = useRef(null)
+  const latestScreenshot    = useRef(null)
 
   useEffect(() => {
     const es = new EventSource(`${SSE_BASE}/hunt/stream/${huntId}`)
@@ -225,7 +226,8 @@ export default function HuntView({ huntId, onClose }) {
                     onChange={e => setInstruction(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleResume()}
                     placeholder="Optional: tell the agent what to do next..."
-                    className="flex-1 bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-primary-500 outline-none focus:border-primary-500"
+                    className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+                    style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', caretColor: '#fff' }}
                     autoFocus
                   />
                   <button onClick={handleResume} className="btn-gold flex items-center gap-1.5 px-4 py-2 text-sm">
@@ -373,7 +375,8 @@ export default function HuntView({ huntId, onClose }) {
                   onChange={e => setQuestionAnswer(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && questionAnswer && handleAnswerQuestion()}
                   placeholder="Type your answer..."
-                  className="flex-1 bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-primary-500 outline-none focus:border-primary-400"
+                  className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+                  style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', caretColor: '#fff' }}
                   autoFocus
                 />
                 <button onClick={() => handleAnswerQuestion()} disabled={!questionAnswer}
