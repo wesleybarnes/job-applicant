@@ -1,24 +1,24 @@
 import React, { useState } from 'react'
-import { Outlet, NavLink } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, FileText, Crosshair, Zap, Crown } from 'lucide-react'
+import { Outlet, NavLink, useLocation } from 'react-router-dom'
+import { LayoutDashboard, Briefcase, FileText, Crosshair, Zap, Crown, Settings } from 'lucide-react'
 import { UserButton } from '@clerk/clerk-react'
 import { useAppUser } from '../App'
 import CreditsModal from './CreditsModal'
 import clsx from 'clsx'
 
 const NAV = [
-  { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/hunt',         icon: Crosshair,        label: 'Hunt Jobs', badge: 'NEW' },
+  { to: '/dashboard',    icon: LayoutDashboard, label: 'Home' },
+  { to: '/hunt',         icon: Crosshair,        label: 'Hunt Jobs', badge: 'AI' },
   { to: '/jobs',         icon: Briefcase,         label: 'Find Jobs' },
   { to: '/applications', icon: FileText,          label: 'Applications' },
 ]
 
 function Logo() {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-      <rect width="32" height="32" rx="8" fill="#4B9CD3"/>
-      <path d="M10 22l4-12 4 12M12.5 17h5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-      <circle cx="23" cy="10" r="2.5" fill="white" opacity="0.9"/>
+    <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+      <rect width="36" height="36" rx="10" fill="#1877F2"/>
+      <path d="M11 25l5-14 5 14M13.5 19.5h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="26" cy="11" r="3" fill="white" opacity="0.85"/>
     </svg>
   )
 }
@@ -31,37 +31,35 @@ export default function Layout() {
   const isAdmin = appUser?.is_admin
 
   return (
-    <div className="min-h-screen flex bg-slate-50">
+    <div className="min-h-screen flex" style={{ background: '#F0F2F5' }}>
       {/* Sidebar */}
-      <aside className="w-60 flex flex-col flex-shrink-0 bg-white border-r border-slate-100" style={{ boxShadow: '1px 0 0 #F1F5F9' }}>
-        {/* Logo */}
-        <div className="px-5 py-5 border-b border-slate-100">
-          <div className="flex items-center gap-2.5">
-            <Logo />
-            <div>
-              <span className="font-bold text-lg text-slate-900 tracking-tight">Envia</span>
-              <p className="text-xs text-slate-400">Powered by Claude</p>
-            </div>
+      <aside className="w-64 flex-shrink-0 flex flex-col bg-white" style={{ boxShadow: '1px 0 0 #E4E6EA' }}>
+        {/* Brand */}
+        <div className="px-4 py-5 flex items-center gap-3">
+          <Logo />
+          <div>
+            <p className="font-bold text-lg leading-none text-ink-primary tracking-tight">Envia</p>
+            <p className="text-xs text-ink-tertiary mt-0.5">AI Job Hunter</p>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
+        <nav className="flex-1 px-2 py-2 space-y-0.5">
           {NAV.map(({ to, icon: Icon, label, badge }) => (
             <NavLink key={to} to={to} className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
+                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-100',
                 isActive
-                  ? 'bg-primary-50 text-primary-700'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                  ? 'bg-brand-50 text-brand-500'
+                  : 'text-ink-secondary hover:bg-surface-hover hover:text-ink-primary'
               )
             }>
               {({ isActive }) => (
                 <>
-                  <Icon className={clsx('w-4 h-4 flex-shrink-0', isActive ? 'text-primary-500' : 'text-slate-400')} />
-                  {label}
+                  <Icon className={clsx('w-[18px] h-[18px] flex-shrink-0', isActive ? 'text-brand-500' : 'text-ink-tertiary')} />
+                  <span className="flex-1">{label}</span>
                   {badge && (
-                    <span className="ml-auto text-xs px-1.5 py-0.5 rounded-full bg-primary-100 text-primary-600 font-semibold">{badge}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-pill font-bold bg-brand-500 text-white">{badge}</span>
                   )}
                 </>
               )}
@@ -69,36 +67,39 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Credits + User */}
-        <div className="px-3 py-4 border-t border-slate-100 space-y-3">
+        {/* Bottom */}
+        <div className="px-3 py-4 space-y-2" style={{ borderTop: '1px solid #E4E6EA' }}>
+          {/* Credits */}
           {isAdmin ? (
-            <div className="flex items-center gap-2 px-3 py-2 bg-primary-50 rounded-xl border border-primary-100">
-              <Crown className="w-4 h-4 text-primary-500" />
-              <span className="text-sm font-semibold text-primary-700">Admin — Unlimited</span>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-50">
+              <Crown className="w-4 h-4 text-brand-500 flex-shrink-0" />
+              <span className="text-sm font-semibold text-brand-600">Admin · Unlimited</span>
             </div>
           ) : (
             <button
               onClick={() => setShowCredits(true)}
-              className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-primary-50 rounded-xl border border-slate-200 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-surface-hover hover:bg-surface-border transition-colors"
             >
               <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-primary-500" />
-                <span className="text-sm font-medium text-slate-700">{credits} credit{credits !== 1 ? 's' : ''}</span>
+                <Zap className="w-4 h-4 text-brand-500" />
+                <span className="text-sm font-semibold text-ink-primary">{credits} credits</span>
               </div>
-              <span className="text-xs text-primary-600 font-semibold">+ Add</span>
+              <span className="text-xs text-brand-500 font-semibold">+ Add</span>
             </button>
           )}
 
-          <div className="flex items-center gap-2.5 px-1">
+          {/* User */}
+          <div className="flex items-center gap-3 px-1 py-1">
             <UserButton afterSignOutUrl="/" />
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-slate-800 truncate">{appUser?.full_name}</p>
-              <p className="text-xs text-slate-400 truncate">{appUser?.email}</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-ink-primary truncate">{appUser?.full_name}</p>
+              <p className="text-xs text-ink-tertiary truncate">{appUser?.email}</p>
             </div>
           </div>
         </div>
       </aside>
 
+      {/* Content */}
       <main className="flex-1 overflow-auto">
         <Outlet />
       </main>

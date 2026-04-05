@@ -7,9 +7,9 @@
 @layer base {
   * { box-sizing: border-box; }
   body {
-    font-family: 'Inter', system-ui, sans-serif;
-    background: #F8FAFF;
-    color: #0F172A;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+    background: #F0F2F5;
+    color: #1C1E21;
     -webkit-font-smoothing: antialiased;
   }
 }
@@ -17,87 +17,95 @@
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
-           bg-primary-500 hover:bg-primary-600 active:bg-primary-700
-           text-white font-semibold px-5 py-2.5 rounded-xl
-           transition-all duration-150 cursor-pointer;
-    box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+           font-semibold text-sm text-white
+           px-4 py-2 rounded-lg
+           transition-all duration-100 cursor-pointer select-none;
+    background: #1877F2;
   }
+  .btn-primary:hover  { background: #0C5FD0; }
+  .btn-primary:active { background: #0949A8; }
   .btn-primary:disabled {
-    @apply bg-primary-200 text-primary-400 cursor-not-allowed shadow-none;
+    @apply opacity-50 cursor-not-allowed;
+    background: #1877F2;
   }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
-           bg-white hover:bg-sky-50 text-primary-700 font-semibold
-           px-5 py-2.5 rounded-xl border border-primary-200
-           transition-all duration-150 cursor-pointer;
+           font-semibold text-sm
+           px-4 py-2 rounded-lg border
+           transition-all duration-100 cursor-pointer select-none;
+    background: #E7F3FF;
+    color: #1877F2;
+    border-color: #E7F3FF;
+  }
+  .btn-secondary:hover { background: #D1E9FF; border-color: #D1E9FF; }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           font-semibold text-sm text-ink-secondary
+           px-4 py-2 rounded-lg
+           hover:bg-surface-hover
+           transition-all duration-100 cursor-pointer;
   }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2
-           bg-red-500 hover:bg-red-600 text-white font-semibold
-           px-5 py-2.5 rounded-xl transition-all duration-150;
+           font-semibold text-sm text-white
+           px-4 py-2 rounded-lg
+           transition-all duration-100;
+    background: #FA3E3E;
   }
+  .btn-danger:hover { background: #E03030; }
 
-  .btn-ghost {
-    @apply inline-flex items-center justify-center gap-2
-           text-primary-600 hover:bg-primary-50 font-semibold
-           px-4 py-2 rounded-xl transition-all duration-150;
-  }
-
-  /* Keep btn-gold for hunt view dark elements */
+  /* Hunt-specific gold button maps to brand blue */
   .btn-gold {
     @apply inline-flex items-center justify-center gap-2
-           bg-primary-500 hover:bg-primary-600 text-white font-semibold
-           px-5 py-2.5 rounded-xl transition-all duration-150;
-    box-shadow: 0 2px 8px rgba(37,99,235,0.3);
+           font-semibold text-sm text-white
+           px-4 py-2 rounded-lg
+           transition-all duration-100;
+    background: #1877F2;
   }
+  .btn-gold:hover { background: #0C5FD0; }
 
   .card {
-    @apply bg-white rounded-2xl border border-slate-100 p-6;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(75,156,211,0.07);
-    transition: box-shadow 0.2s;
-  }
-  .card:hover {
-    box-shadow: 0 4px 24px rgba(37,99,235,0.12);
+    @apply bg-white rounded-card;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
   }
 
   .input {
-    @apply w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5
-           text-sm text-slate-900 placeholder-slate-400
+    @apply w-full bg-white rounded-lg px-3 py-2.5 text-sm
+           text-ink-primary placeholder-ink-tertiary
+           border border-surface-border
            outline-none transition-all;
   }
   .input:focus {
-    @apply border-primary-400;
-    box-shadow: 0 0 0 3px rgba(75,156,211,0.15);
+    border-color: #1877F2;
+    box-shadow: 0 0 0 2px rgba(24,119,242,0.2);
   }
 
-  .label { @apply block text-sm font-semibold text-slate-700 mb-1.5; }
+  .label { @apply block text-sm font-semibold text-ink-primary mb-1.5; }
 
   .badge {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5
-           rounded-full text-xs font-semibold;
+           rounded-pill text-xs font-semibold;
   }
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #F0F9FF; }
-::-webkit-scrollbar-thumb { background: #93C5FD; border-radius: 3px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #BEC3C9; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #8A8D91; }
 
 @keyframes shimmer {
   0%   { background-position: 0% center; }
   100% { background-position: 200% center; }
 }
 .text-shimmer {
-  background: linear-gradient(90deg, #1D4ED8 0%, #4B9CD3 50%, #1D4ED8 100%);
+  background: linear-gradient(90deg, #1877F2 0%, #47A7FF 50%, #1877F2 100%);
   background-size: 200% auto;
   animation: shimmer 3s linear infinite;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-}
-
-.hero-gradient {
-  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 40%, #F0F9FF 100%);
 }

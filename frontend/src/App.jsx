@@ -15,8 +15,8 @@ export const useAppUser = () => useContext(AppUserContext)
 
 function Spinner() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full" />
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#F0F2F5' }}>
+      <div className="animate-spin w-8 h-8 border-4 border-t-transparent rounded-full" style={{ borderColor: '#E4E6EA', borderTopColor: '#1877F2' }} />
     </div>
   )
 }
@@ -24,23 +24,23 @@ function Spinner() {
 function BackendError({ error, onRetry }) {
   const { signOut } = useAuth()
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
-      <div className="text-center max-w-md bg-white rounded-2xl p-8 shadow-card border border-slate-100">
-        <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center mx-auto mb-4">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#F0F2F5' }}>
+      <div className="text-center max-w-md bg-white rounded-card p-8" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+        <div className="w-14 h-14 rounded-xl bg-red-50 flex items-center justify-center mx-auto mb-4">
           <span className="text-2xl">⚠️</span>
         </div>
-        <h2 className="font-bold text-slate-900 text-xl mb-2">Can't reach the server</h2>
-        <p className="text-slate-500 text-sm mb-3 leading-relaxed">
+        <h2 className="font-bold text-ink-primary text-xl mb-2">Can't reach the server</h2>
+        <p className="text-ink-secondary text-sm mb-3 leading-relaxed">
           The backend isn't responding. Try again, or sign out and back in.
         </p>
         {error && (
-          <p className="text-red-500 text-xs font-mono bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-6 break-all">
+          <p className="text-red-500 text-xs font-mono bg-red-50 rounded-lg px-3 py-2 mb-6 break-all">
             {String(error)}
           </p>
         )}
         <div className="flex flex-col gap-3">
-          <button onClick={onRetry} className="btn-primary px-8 w-full">Retry</button>
-          <button onClick={() => signOut({ redirectUrl: '/' })} className="text-sm text-slate-400 hover:text-slate-700 transition-colors">
+          <button onClick={onRetry} className="btn-primary w-full py-2.5">Retry</button>
+          <button onClick={() => signOut({ redirectUrl: '/' })} className="text-sm text-ink-tertiary hover:text-ink-primary transition-colors">
             Sign out
           </button>
         </div>
@@ -51,7 +51,7 @@ function BackendError({ error, onRetry }) {
 
 function AuthPage({ children }) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 hero-gradient">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#F0F2F5' }}>
       {children}
     </div>
   )
