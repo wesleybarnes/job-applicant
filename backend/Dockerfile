@@ -1,18 +1,11 @@
-FROM python:3.11-slim
+# Official Playwright image — Python 3.11 + Chromium pre-installed on Ubuntu Jammy
+FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
 
 WORKDIR /app
 
-# System deps required by Playwright's Chromium
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget curl gnupg ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies first (layer cached unless requirements.txt changes)
+# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright's Chromium browser + its OS dependencies in one shot
-RUN playwright install chromium --with-deps
 
 # Copy application code
 COPY . .
