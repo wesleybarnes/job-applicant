@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Crosshair, Zap, MapPin, Briefcase, Brain, ChevronRight, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { useAppUser } from '../App'
 import HuntView from '../components/HuntView'
-import { startHunt, listHuntSessions } from '../api/client'
+import { startHunt, listHuntSessions, getResumes } from '../api/client'
 
 function StatusBadge({ status }) {
   const cfg = {
@@ -32,14 +32,21 @@ export default function HuntPage() {
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState(null)
   const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [hasResume, setHasResume]       = useState(false)
 
-  const profile = appUser?.profile || {}
-  const targetRoles     = profile.target_roles     || []
-  const targetLocations = profile.target_locations || []
-  const skills          = profile.skills           || []
-  const hasResume       = !!appUser?.resume_text
+  const targetRoles     = appUser?.target_roles     || []
+  const targetLocations = appUser?.target_locations || []
+  const skills          = appUser?.skills           || []
   const credits         = appUser?.credits ?? 0
   const canHunt         = hasResume && credits >= 5
+
+  useEffect(() => {
+    if (!appUser?.id) return
+    // Check for uploaded resume separately (Resume is its own table)
+    getResumes(appUser.id)
+      .then(r => setHasResume(r.some(resume => resume.is_active)))
+      .catch(() => {})
+  }, [appUser?.id])
 
   useEffect(() => {
     listHuntSessions()
