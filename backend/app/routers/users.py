@@ -23,6 +23,13 @@ def get_or_create_me(
         models.UserProfile.clerk_user_id == clerk_user_id
     ).first()
     if user:
+        # Auto-upgrade to admin if email matches ADMIN_EMAIL (catches existing users)
+        if settings.admin_email and user.email.lower() == settings.admin_email.lower():
+            if not user.is_admin:
+                user.is_admin = True
+                user.credits = 999999
+                db.commit()
+                db.refresh(user)
         return user
 
     # First-ever login — we only have the Clerk user ID right now.

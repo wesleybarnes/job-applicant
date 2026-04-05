@@ -5,6 +5,7 @@ import {
   Monitor, Zap, ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { listApplications, runAgent, updateApplication, getUser, updateUser } from '../api/client'
+import { useAppUser } from '../App'
 import BrowserView from '../components/BrowserView'
 import api from '../api/client'
 
