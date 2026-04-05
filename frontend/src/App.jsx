@@ -21,18 +21,23 @@ function Spinner() {
   )
 }
 
-function BackendError({ onRetry }) {
+function BackendError({ error, onRetry }) {
   const { signOut } = useAuth()
   return (
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0a0618' }}>
-      <div className="text-center max-w-sm">
+      <div className="text-center max-w-md">
         <div className="w-14 h-14 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
           <span className="text-2xl">⚠️</span>
         </div>
         <h2 className="font-bold text-white text-xl mb-2">Can't reach the server</h2>
-        <p className="text-primary-400 text-sm mb-6 leading-relaxed">
+        <p className="text-primary-400 text-sm mb-3 leading-relaxed">
           The backend isn't responding. Try again, or sign out and back in.
         </p>
+        {error && (
+          <p className="text-red-400 text-xs font-mono bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-6 break-all">
+            {String(error)}
+          </p>
+        )}
         <div className="flex flex-col gap-3">
           <button onClick={onRetry} className="btn-primary px-8">Retry</button>
           <button
@@ -75,7 +80,7 @@ function InnerApp() {
   const { user: clerkUser } = useUser()
   const [appUser, setAppUser] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(false)
+  const [fetchError, setFetchError] = useState(null)
   const [retryCount, setRetryCount] = useState(0)
 
   useEffect(() => {
@@ -89,6 +94,7 @@ function InnerApp() {
     setLoading(true)
 
     const fetchUser = async () => {
+      let lastError = null
       for (let i = 0; i < 4; i++) {
         if (cancelled) return
         try {
@@ -107,12 +113,13 @@ function InnerApp() {
             if (!cancelled) { setAppUser(null); setFetchError(false); setLoading(false) }
             return
           }
+          lastError = e?.response?.data?.detail || e?.message || `HTTP ${e?.response?.status || 'network error'}`
           if (i < 3) await new Promise(r => setTimeout(r, 800))
         }
       }
       // All retries exhausted — show error page, never redirect to onboarding
       if (!cancelled) {
-        setFetchError(true)
+        setFetchError(lastError || 'Could not connect to backend')
         setLoading(false)
       }
     }
@@ -131,7 +138,7 @@ function InnerApp() {
 
   // Backend unreachable — show error page, never redirect to onboarding
   if (fetchError) {
-    return <BackendError onRetry={() => setRetryCount(c => c + 1)} />
+    return <BackendError error={fetchError} onRetry={() => setRetryCount(c => c + 1)} />
   }
 
   // Onboarding not complete (new user or 404 from backend)
