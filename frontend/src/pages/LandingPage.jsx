@@ -1,6 +1,6 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Upload, Bot, BarChart3, CheckCircle, ArrowRight } from 'lucide-react'
+import { Sparkles, Upload, Bot, BarChart3, CheckCircle, ArrowRight, Monitor } from 'lucide-react'
 
 const FEATURES = [
   {
@@ -14,9 +14,9 @@ const FEATURES = [
     desc: 'Claude Opus analyzes each job and crafts a unique, compelling cover letter.',
   },
   {
-    icon: BarChart3,
-    title: 'Match Scoring',
-    desc: 'See exactly how well you fit each role before applying. Skip the long shots.',
+    icon: Monitor,
+    title: 'Watch It Apply Live',
+    desc: 'Envia controls the browser so you can watch every click. Confirm before each submit.',
   },
   {
     icon: CheckCircle,
@@ -36,14 +36,22 @@ export default function LandingPage() {
           <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-xl">ApplyAI</span>
+          <span className="font-bold text-xl">Envia</span>
         </div>
-        <button
-          onClick={() => navigate('/onboarding')}
-          className="bg-white text-primary-700 px-5 py-2 rounded-lg font-semibold text-sm hover:bg-primary-50 transition-colors"
-        >
-          Get Started Free
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/sign-in')}
+            className="text-white/80 hover:text-white text-sm font-medium transition-colors"
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => navigate('/sign-up')}
+            className="bg-white text-primary-700 px-5 py-2 rounded-lg font-semibold text-sm hover:bg-primary-50 transition-colors"
+          >
+            Get Started Free
+          </button>
+        </div>
       </nav>
 
       {/* Hero */}
@@ -58,17 +66,24 @@ export default function LandingPage() {
           <span className="text-indigo-200">while you sleep</span>
         </h1>
         <p className="text-xl text-indigo-100 max-w-2xl mx-auto mb-10">
-          Upload your resume, answer a quick survey, and let our AI agent hunt for
-          jobs, score your fit, and write personalized cover letters — automatically.
+          Upload your resume, answer a quick survey, and let Envia hunt for
+          jobs, score your fit, write cover letters, and apply — automatically.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button
-            onClick={() => navigate('/onboarding')}
+            onClick={() => navigate('/sign-up')}
             className="flex items-center justify-center gap-2 bg-white text-primary-700 px-8 py-3.5 rounded-xl font-bold text-base hover:bg-indigo-50 transition-colors shadow-lg"
           >
-            Start Applying <ArrowRight className="w-4 h-4" />
+            Start Applying Free <ArrowRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => navigate('/sign-in')}
+            className="flex items-center justify-center gap-2 bg-white/10 border border-white/30 backdrop-blur text-white px-8 py-3.5 rounded-xl font-bold text-base hover:bg-white/20 transition-colors"
+          >
+            Sign In
           </button>
         </div>
+        <p className="text-indigo-300 text-sm mt-4">5 free credits on signup · No credit card required</p>
       </div>
 
       {/* Features */}
@@ -88,7 +103,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <div className="text-center pb-8 text-indigo-300 text-sm">
-        Built with Claude Opus 4.6 · FastAPI · React
+        © 2026 Envia · Built with Claude Opus 4.6 · FastAPI · React
       </div>
     </div>
   )
