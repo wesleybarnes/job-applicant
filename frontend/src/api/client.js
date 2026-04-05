@@ -74,7 +74,7 @@ export const listPacks = () => api.get('/payments/packs').then(r => r.data)
 export const createCheckout = (packId) => api.post(`/payments/checkout/${packId}`).then(r => r.data)
 
 // ─── Hunt ─────────────────────────────────────────────────────────────────────
-export const startHunt = () => api.post('/hunt/start').then(r => r.data)
+export const startHunt = (body = {}) => api.post('/hunt/start', body).then(r => r.data)
 export const listHuntSessions = () => api.get('/hunt/sessions').then(r => r.data)
 export const pauseHunt = (id) => api.post(`/hunt/pause/${id}`).then(r => r.data)
 export const resumeHunt = (id, instruction) => api.post(`/hunt/resume/${id}`, { instruction }).then(r => r.data)

@@ -91,33 +91,54 @@ def remove_hunt_session(hunt_id: int):
 
 # ─── Agent ──────────────────────────────────────────────────────────────────
 
-HUNT_SYSTEM_PROMPT = """You are an autonomous job hunting agent controlling a real web browser.
-Your mission: find relevant jobs for the candidate and apply to them.
+HUNT_SYSTEM_PROMPT = """You are an elite autonomous job hunting agent. You control a real browser.
+Be FAST and DECISIVE. Every second counts — the user is watching live.
 
-## Job Boards
-1. LinkedIn Jobs: https://www.linkedin.com/jobs/search/?keywords={ROLES}&location={LOCATION}
-2. Indeed: https://www.indeed.com/jobs?q={ROLES}&l={LOCATION}
+## STEP 1: LinkedIn Login (ALWAYS do this first if credentials are provided)
+If linkedin_email and linkedin_password are in the candidate profile:
+1. navigate to https://www.linkedin.com/login
+2. fill_field "email" with the email
+3. fill_field "password" with the password
+4. click "Sign in"
+5. Wait for redirect, take screenshot
+If no credentials: skip login, go straight to job search.
 
-## Decision Process
-- Read title, company, location, description
-- Score match against candidate skills/roles (0-100)
-- Call `decide_on_job` with your decision and reasoning
-- Apply to jobs with score 70+
+## STEP 2: Search for Jobs
+Search LinkedIn Jobs FIRST (best for international roles):
+- URL: https://www.linkedin.com/jobs/search/?keywords=ROLE&location=LOCATION&f_TPR=r604800&sortBy=DD
+Use the exact target roles and locations from the candidate profile.
+Also try Google Jobs: https://www.google.com/search?q=ROLE+jobs+LOCATION&ibp=htl;jobs
 
-## Application Process
-1. Navigate to job URL
-2. `get_page_text` to understand the form
-3. Fill every field using candidate info — never fabricate
-4. Upload resume when asked
-5. Call `request_confirmation` BEFORE any submit — no exceptions
-6. Wait for user: confirm → submit | skip → next job | stop → finish_hunt
+## STEP 3: Evaluate Each Listing FAST
+For each job visible on screen:
+- Read title, company, location
+- Score 0-100 against candidate skills/roles
+- Call decide_on_job immediately — DO NOT spend more than 10 seconds per job
+- Move on. Speed > thoroughness at this stage.
+Score 70+ = apply. Score <70 = skip with one-line reason.
 
-## Rules
-- `emit_thinking` to narrate reasoning
-- Screenshot frequently
-- If blocked by login wall, skip that job
-- After 2-3 boards or 15+ jobs evaluated, call `finish_hunt`
-- Be fast and decisive — don't overthink each listing
+## STEP 4: Apply (Easy Apply preferred)
+For jobs you decided to apply:
+1. Click the job listing
+2. Look for "Easy Apply" button (LinkedIn) — use it if available
+3. get_page_text to read the form
+4. Fill every visible field using candidate data — never fabricate
+5. For LinkedIn Easy Apply: fill each step, click Next, repeat
+6. Call request_confirmation when you reach the final submit screen
+7. Wait for user: confirm=submit, skip=abandon this job, stop=finish_hunt
+
+## STEP 5: Company Career Pages (if Easy Apply not available)
+Navigate directly to company's careers page and find the role.
+Apply using the ATS form (Greenhouse, Lever, Workday, etc.)
+
+## CRITICAL RULES
+- NEVER spend more than 2 minutes on a single job
+- NEVER fabricate information — if you don't have data for a field, leave it blank or note it in concerns
+- ALWAYS call request_confirmation before ANY submit button
+- If a page requires login you don't have, call decide_on_job with skip and move on
+- call emit_thinking ONLY for major decisions, not every action
+- After evaluating 15+ jobs or completing 3+ applications, call finish_hunt
+- Indeed is usually blocked by Cloudflare — skip it entirely
 """
 
 
@@ -298,38 +319,47 @@ class AutonomousHuntAgent:
         salary_max = user.get('salary_max')
         salary = f"${salary_min or 0:,} – ${salary_max or 0:,}" if (salary_min or salary_max) else 'Flexible'
 
-        return f"""Hunt for jobs and apply on behalf of this candidate.
+        linkedin_creds = ""
+        if user.get('linkedin_email') and user.get('linkedin_password'):
+            linkedin_creds = f"""
+## LinkedIn Credentials (use ONLY for login on linkedin.com — do not share)
+linkedin_email: {user.get('linkedin_email')}
+linkedin_password: {user.get('linkedin_password')}
+ACTION REQUIRED: Log in to LinkedIn FIRST before searching for jobs.
+"""
+        else:
+            linkedin_creds = "\n## LinkedIn: No credentials provided. Search as guest (limited apply capability).\n"
 
+        return f"""Hunt for jobs and apply on behalf of this candidate. BE FAST.
+{linkedin_creds}
 ## Candidate Profile
 Name: {user.get('full_name', '')}
 Email: {user.get('email', '')}
 Phone: {user.get('phone') or 'Not provided'}
 Location: {user.get('location') or 'Not provided'}
-LinkedIn: {user.get('linkedin_url') or ''}
-GitHub: {user.get('github_url') or ''}
+LinkedIn profile: {user.get('linkedin_url') or ''}
 Years of experience: {user.get('years_experience') or 'Not specified'}
 Education: {user.get('education_level') or 'Not specified'}
 Work authorization: {user.get('work_authorization') or 'Not specified'}
 Willing to relocate: {'Yes' if user.get('willing_to_relocate') else 'No'}
 Salary expectation: {salary}
-Resume file path: {resume_path}
+Resume file: {resume_path}
 
-## Job Targets
-Target roles: {roles}
-Target locations: {locations}
+## Search Targets
+Roles: {roles}
+Locations: {locations}
 Remote preference: {user.get('remote_preference') or 'any'}
-Target industries: {', '.join(user.get('target_industries') or []) or 'any'}
 
 ## Skills
 {skills}
 
-## Professional Summary
+## Summary
 {user.get('summary') or 'Not provided'}
 
-## Pre-written Application Answers
+## Application Answers (use verbatim)
 {json.dumps(user.get('custom_answers') or {}, indent=2)}
 
-Start now — search for "{roles}" in "{locations}". Be fast and decisive.
+START NOW. {"Login to LinkedIn first, then search." if user.get('linkedin_email') else "Search LinkedIn as guest, use Easy Apply where possible."}
 """
 
     async def run(self, user: dict, resume: dict, session: HuntSession, db_session_factory):
