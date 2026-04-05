@@ -4,11 +4,16 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 import os
 
-os.makedirs(os.path.dirname(settings.database_url.replace("sqlite:///", "")), exist_ok=True)
+# Only create the data directory for SQLite (Railway uses PostgreSQL — ephemeral FS would wipe SQLite anyway)
+if settings.database_url.startswith("sqlite"):
+    _db_path = settings.database_url.replace("sqlite:///", "")
+    _db_dir = os.path.dirname(_db_path)
+    if _db_dir:
+        os.makedirs(_db_dir, exist_ok=True)
 
 engine = create_engine(
     settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
+    connect_args={"check_same_thread": False} if settings.database_url.startswith("sqlite") else {},
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -35,11 +35,17 @@ async def start_hunt(
     # Deduct credits (admins skip)
     deduct_credits(current_user, CREDITS_HUNT_SESSION, db)
 
-    # Get latest resume
+    # Get latest resume — required to run the hunt
     resume = db.query(models.Resume).filter(
         models.Resume.user_id == current_user.id,
         models.Resume.is_active == True,
     ).order_by(models.Resume.created_at.desc()).first()
+
+    if not resume:
+        raise HTTPException(
+            status_code=422,
+            detail="No resume found. Please upload your resume from the Dashboard before starting a hunt.",
+        )
 
     # Create DB record
     hunt_db = models.HuntSession(
