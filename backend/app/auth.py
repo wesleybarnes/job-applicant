@@ -20,7 +20,9 @@ from app import models
 import base64 as _b64
 _raw = settings.clerk_publishable_key.split("_", 2)[-1]
 _padded = _raw + "=" * (-len(_raw) % 4)
-CLERK_DOMAIN = _b64.b64decode(_padded).decode("utf-8", errors="ignore").rstrip("$")
+_decoded = _b64.b64decode(_padded).decode("utf-8", errors="ignore")
+# Strip non-printable / non-ASCII characters, then strip trailing $
+CLERK_DOMAIN = ''.join(c for c in _decoded if c.isprintable() and ord(c) < 128).rstrip("$")
 JWKS_URL = f"https://{CLERK_DOMAIN}/.well-known/jwks.json"
 
 bearer_scheme = HTTPBearer(auto_error=False)
