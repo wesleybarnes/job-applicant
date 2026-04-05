@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
+from typing import Optional
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
@@ -92,6 +93,31 @@ def update_me(
 ):
     for field, value in update.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/me/grant-admin", response_model=schemas.UserProfileResponse)
+def grant_admin(
+    x_admin_secret: Optional[str] = Header(default=None),
+    clerk_user_id: str = Depends(get_clerk_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Self-service endpoint: grant the requesting user admin + unlimited credits.
+    Protected by X-Admin-Secret header = ANTHROPIC_API_KEY value.
+    Call this once if your admin email/flag isn't being picked up automatically.
+    """
+    if not x_admin_secret or x_admin_secret != settings.anthropic_api_key:
+        raise HTTPException(status_code=403, detail="Invalid admin secret.")
+    user = db.query(models.UserProfile).filter(
+        models.UserProfile.clerk_user_id == clerk_user_id
+    ).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_admin = True
+    user.credits = 999999
     db.commit()
     db.refresh(user)
     return user

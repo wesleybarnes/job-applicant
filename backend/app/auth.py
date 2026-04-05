@@ -109,10 +109,24 @@ def get_current_user_or_none(
         return None
 
 
+def _is_admin(user: models.UserProfile) -> bool:
+    """True if user has the is_admin flag OR their email matches ADMIN_EMAIL env var."""
+    if user.is_admin:
+        return True
+    if settings.admin_email and user.email.lower() == settings.admin_email.lower():
+        return True
+    return False
+
+
 def require_credits(cost: int = 1):
     """Dependency factory — ensures the user has enough credits. Admins skip."""
-    def _check(user: models.UserProfile = Depends(get_current_user)):
-        if user.is_admin:
+    def _check(user: models.UserProfile = Depends(get_current_user), db: Session = Depends(get_db)):
+        if _is_admin(user):
+            # Ensure the flag is persisted so future checks are fast
+            if not user.is_admin:
+                user.is_admin = True
+                user.credits = 999999
+                db.commit()
             return user
         if user.credits < cost:
             raise HTTPException(
@@ -125,7 +139,7 @@ def require_credits(cost: int = 1):
 
 def deduct_credits(user: models.UserProfile, cost: int, db: Session):
     """Deduct credits from a user. No-op for admins."""
-    if user.is_admin:
+    if _is_admin(user):
         return
     user.credits = max(0, user.credits - cost)
     db.commit()
