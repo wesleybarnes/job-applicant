@@ -176,6 +176,25 @@ async def skip_hunt_job(hunt_id: int):
     return {"status": "skipped"}
 
 
+@router.post("/pause/{hunt_id}")
+async def pause_hunt(hunt_id: int):
+    session = get_hunt_session(hunt_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="No active hunt session")
+    session.pause()
+    return {"status": "paused"}
+
+
+@router.post("/resume/{hunt_id}")
+async def resume_hunt(hunt_id: int, body: dict = None):
+    session = get_hunt_session(hunt_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="No active hunt session")
+    instruction = (body or {}).get("instruction")
+    session.resume(instruction)
+    return {"status": "resumed"}
+
+
 @router.post("/stop/{hunt_id}")
 async def stop_hunt(hunt_id: int, db: Session = Depends(get_db)):
     """User stops the entire hunt."""

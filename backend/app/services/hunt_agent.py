@@ -1,12 +1,5 @@
 """
 Autonomous job hunt agent — Playwright + Claude browse job boards and apply.
-
-Flow:
-  1. Claude searches LinkedIn Jobs, Indeed, Google Jobs using user's target roles/locations
-  2. Claude reads listings, decides which jobs to apply to
-  3. For each application, fills the form using user profile
-  4. Pauses at every submit for user confirmation (or stop/skip)
-  5. User can interrupt at any time via the Stop button
 """
 import asyncio
 import base64
@@ -23,16 +16,22 @@ class HuntSession:
         self.user_id = user_id
         self.events: asyncio.Queue = asyncio.Queue()
         self._confirm_event: asyncio.Event = asyncio.Event()
-        self._confirm_decision: Optional[str] = None  # 'confirm' | 'skip' | 'stop'
+        self._confirm_decision: Optional[str] = None
         self._stopped = False
+        self._paused = False
+        self._resume_event: asyncio.Event = asyncio.Event()
+        self._resume_event.set()  # not paused by default
+        self._user_instruction: Optional[str] = None
         self.jobs_found = 0
         self.jobs_applied = 0
+        # Last known cursor position for frontend overlay
+        self.cursor_x: Optional[int] = None
+        self.cursor_y: Optional[int] = None
 
     def emit(self, event: dict):
         self.events.put_nowait(event)
 
     async def wait_for_confirmation(self) -> str:
-        """Block until user confirms, skips, or stops. Returns 'confirm'|'skip'|'stop'."""
         self._confirm_event.clear()
         self._confirm_decision = None
         await self._confirm_event.wait()
@@ -42,8 +41,34 @@ class HuntSession:
         self._confirm_decision = decision
         self._confirm_event.set()
 
+    def pause(self):
+        self._paused = True
+        self._resume_event.clear()
+        self.emit({"type": "status", "message": "⏸ Agent paused — you have control"})
+
+    def resume(self, instruction: Optional[str] = None):
+        self._paused = False
+        self._user_instruction = instruction
+        self._resume_event.set()
+        if instruction:
+            self.emit({"type": "status", "message": f"▶ Resumed with instruction: {instruction}"})
+        else:
+            self.emit({"type": "status", "message": "▶ Agent resumed"})
+
+    async def check_paused(self):
+        """Call this in the agent loop — blocks while paused."""
+        if self._paused:
+            await self._resume_event.wait()
+
+    def pop_instruction(self) -> Optional[str]:
+        inst = self._user_instruction
+        self._user_instruction = None
+        return inst
+
     def stop(self):
         self._stopped = True
+        self._paused = False
+        self._resume_event.set()
         self.resolve_confirmation('stop')
 
 
@@ -67,41 +92,32 @@ def remove_hunt_session(hunt_id: int):
 # ─── Agent ──────────────────────────────────────────────────────────────────
 
 HUNT_SYSTEM_PROMPT = """You are an autonomous job hunting agent controlling a real web browser.
-Your mission: find relevant jobs for the candidate and apply to them one by one.
+Your mission: find relevant jobs for the candidate and apply to them.
 
-## Your Job Boards (visit in order)
+## Job Boards
 1. LinkedIn Jobs: https://www.linkedin.com/jobs/search/?keywords={ROLES}&location={LOCATION}
 2. Indeed: https://www.indeed.com/jobs?q={ROLES}&l={LOCATION}
-3. Google Jobs: search Google for "{ROLE} jobs {LOCATION} site:careers"
 
-## Decision Process for Each Job
-- Read the title, company, location, and description
-- Score the match against the candidate's skills and target roles
-- Call `decide_on_job` to record your decision with a reason
-- Only apply to jobs that are a strong match (score 70+/100)
-- Skip if: already applied, wrong location, requires skills candidate doesn't have, salary far below range
+## Decision Process
+- Read title, company, location, description
+- Score match against candidate skills/roles (0-100)
+- Call `decide_on_job` with your decision and reasoning
+- Apply to jobs with score 70+
 
 ## Application Process
-For each job you decide to apply to:
-1. Navigate to the application URL
-2. Call `get_page_text` to understand the form
-3. Take a screenshot
-4. Fill every field using the candidate's information — never fabricate data
-5. Upload resume when asked
-6. Use the cover letter when asked for a personal statement
-7. Call `request_confirmation` before ANY submit button — ALWAYS, no exceptions
-8. Wait for user decision (confirm / skip / stop)
-9. If confirmed: call `submit_application`
-10. If skipped: move to next job
-11. If stopped: call `finish_hunt` immediately
+1. Navigate to job URL
+2. `get_page_text` to understand the form
+3. Fill every field using candidate info — never fabricate
+4. Upload resume when asked
+5. Call `request_confirmation` BEFORE any submit — no exceptions
+6. Wait for user: confirm → submit | skip → next job | stop → finish_hunt
 
 ## Rules
-- Call `emit_thinking` to narrate your reasoning so the user can follow along
-- Take screenshots frequently so the user can watch the progress
-- Never fabricate information — if a field can't be filled, note it in concerns
-- If a page requires login (LinkedIn, Greenhouse, etc.), attempt to proceed; if blocked, skip that job
-- Be persistent but smart — if a form is too complex or broken, skip and move on
-- After visiting 2-3 boards and applying to a reasonable number of jobs, call `finish_hunt`
+- `emit_thinking` to narrate reasoning
+- Screenshot frequently
+- If blocked by login wall, skip that job
+- After 2-3 boards or 15+ jobs evaluated, call `finish_hunt`
+- Be fast and decisive — don't overthink each listing
 """
 
 
@@ -125,7 +141,7 @@ class AutonomousHuntAgent:
             },
             {
                 "name": "screenshot",
-                "description": "Take a screenshot and stream it to the user.",
+                "description": "Take a screenshot.",
                 "input_schema": {
                     "type": "object",
                     "properties": {"label": {"type": "string"}},
@@ -152,7 +168,7 @@ class AutonomousHuntAgent:
             },
             {
                 "name": "click",
-                "description": "Click a button or link.",
+                "description": "Click a button or link by text/label.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -188,25 +204,25 @@ class AutonomousHuntAgent:
             },
             {
                 "name": "search_job_board",
-                "description": "Navigate to a job board search with the right query URL.",
+                "description": "Navigate to a job board with search query.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
                         "board": {"type": "string", "enum": ["linkedin", "indeed", "google"]},
-                        "query": {"type": "string", "description": "Job title / keywords"},
-                        "location": {"type": "string", "description": "City or remote"},
+                        "query": {"type": "string"},
+                        "location": {"type": "string"},
                     },
                     "required": ["board", "query", "location"],
                 },
             },
             {
                 "name": "extract_job_listings",
-                "description": "Read the current page and extract a list of job listings.",
+                "description": "Read the current page and extract job listings.",
                 "input_schema": {"type": "object", "properties": {}},
             },
             {
                 "name": "decide_on_job",
-                "description": "Record your decision to apply to or skip a job. Emits a live decision card to the user.",
+                "description": "Record decision to apply or skip a job.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -214,7 +230,7 @@ class AutonomousHuntAgent:
                         "company": {"type": "string"},
                         "location": {"type": "string"},
                         "url": {"type": "string"},
-                        "match_score": {"type": "number", "description": "0-100"},
+                        "match_score": {"type": "number"},
                         "decision": {"type": "string", "enum": ["apply", "skip"]},
                         "reason": {"type": "string"},
                     },
@@ -223,7 +239,7 @@ class AutonomousHuntAgent:
             },
             {
                 "name": "request_confirmation",
-                "description": "Pause and ask the user to review before submitting. ALWAYS call before submit_application.",
+                "description": "Pause and ask user to review before submitting.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -238,7 +254,7 @@ class AutonomousHuntAgent:
             },
             {
                 "name": "submit_application",
-                "description": "Click the final submit button. Only after request_confirmation was approved.",
+                "description": "Click the final submit button after confirmation.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -251,7 +267,7 @@ class AutonomousHuntAgent:
             },
             {
                 "name": "emit_thinking",
-                "description": "Narrate your current reasoning so the user can follow along.",
+                "description": "Narrate your reasoning to the user.",
                 "input_schema": {
                     "type": "object",
                     "properties": {"thought": {"type": "string"}},
@@ -260,7 +276,7 @@ class AutonomousHuntAgent:
             },
             {
                 "name": "finish_hunt",
-                "description": "End the hunt session gracefully with a summary.",
+                "description": "End the hunt with a summary.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
@@ -310,21 +326,13 @@ Target industries: {', '.join(user.get('target_industries') or []) or 'any'}
 ## Professional Summary
 {user.get('summary') or 'Not provided'}
 
-## Pre-written Application Answers (use these verbatim)
+## Pre-written Application Answers
 {json.dumps(user.get('custom_answers') or {}, indent=2)}
 
-## Instructions
-1. Call `emit_thinking` to explain your plan
-2. Call `search_job_board` for each board (LinkedIn, Indeed)
-3. Read listings, call `decide_on_job` for each job you evaluate
-4. For jobs you decide to apply: navigate to URL, fill the form, call `request_confirmation`, wait
-5. Continue until you've found and evaluated at least 10 jobs or visited all boards
-6. Call `finish_hunt` when done
-
-Start now — search for "{roles}" in "{locations}".
+Start now — search for "{roles}" in "{locations}". Be fast and decisive.
 """
 
-    async def run(self, user, resume, session: HuntSession, db_session_factory):
+    async def run(self, user: dict, resume: dict, session: HuntSession, db_session_factory):
         try:
             from playwright.async_api import async_playwright
         except ImportError:
@@ -334,46 +342,77 @@ Start now — search for "{roles}" in "{locations}".
         session.emit({"type": "status", "message": "Starting autonomous job hunt..."})
 
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True, slow_mo=200)
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-blink-features=AutomationControlled',
+                ]
+            )
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             )
             page = await context.new_page()
 
-            async def take_screenshot(label: str = "") -> str:
+            # ── Continuous screenshot stream (3fps independent of agent) ──────
+            async def screenshot_loop():
+                while not session._stopped:
+                    try:
+                        png = await page.screenshot(full_page=False)
+                        b64 = base64.b64encode(png).decode()
+                        meta = {}
+                        if session.cursor_x is not None:
+                            meta = {"cx": session.cursor_x, "cy": session.cursor_y}
+                        session.emit({"type": "screenshot", "data": b64, **meta})
+                    except Exception:
+                        pass
+                    await asyncio.sleep(0.35)  # ~3fps
+
+            screenshot_task = asyncio.create_task(screenshot_loop())
+
+            async def do_click_at(el, reason=""):
+                """Click element and record cursor position."""
                 try:
-                    png = await page.screenshot(full_page=False)
-                    b64 = base64.b64encode(png).decode()
-                    session.emit({"type": "screenshot", "data": b64, "label": label})
-                    return b64
+                    box = await el.bounding_box()
+                    if box:
+                        cx = int(box['x'] + box['width'] / 2)
+                        cy = int(box['y'] + box['height'] / 2)
+                        session.cursor_x = cx
+                        session.cursor_y = cy
+                        await page.mouse.move(cx, cy)
                 except Exception:
-                    return ""
+                    pass
+                await el.click()
 
             async def execute_tool(name: str, inp: dict) -> str:
                 if session._stopped:
-                    return "Hunt stopped by user."
+                    return "Hunt stopped."
+
+                # Check if paused — block until resumed
+                await session.check_paused()
+                instruction = session.pop_instruction()
+                if instruction:
+                    return f"User instruction received: {instruction}. Please follow this guidance."
 
                 if name == "navigate":
                     url = inp["url"]
                     session.emit({"type": "action", "message": f"→ {url[:80]}"})
                     try:
-                        await page.goto(url, wait_until="domcontentloaded", timeout=25000)
-                        await asyncio.sleep(2)
-                        await take_screenshot(inp.get("reason", "Navigated"))
+                        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                        await asyncio.sleep(1)
                         return f"Navigated to {url}"
                     except Exception as e:
                         return f"Navigation failed: {e}"
 
                 elif name == "screenshot":
-                    label = inp.get("label", "")
-                    await take_screenshot(label)
-                    return f"Screenshot: {label}"
+                    return f"Screenshot: {inp.get('label', '')}"
 
                 elif name == "get_page_text":
                     try:
                         text = await page.inner_text("body")
-                        return text[:5000]
+                        return text[:6000]
                     except Exception as e:
                         return f"Could not read page: {e}"
 
@@ -384,15 +423,15 @@ Start now — search for "{roles}" in "{locations}".
                     session.emit({"type": "action", "message": f"Filling: {desc}"})
                     try:
                         filled = False
-                        for strategy in [
+                        strategies = [
                             f'[placeholder*="{hint}" i]',
                             f'[aria-label*="{hint}" i]',
                             f'[name*="{hint}" i]',
                             f'[id*="{hint}" i]',
-                            f'label:has-text("{hint}") + input',
-                            f'label:has-text("{hint}") ~ input',
                             f'label:has-text("{hint}") input',
-                        ]:
+                            f'label:has-text("{hint}") textarea',
+                        ]
+                        for strategy in strategies:
                             try:
                                 el = page.locator(strategy).first
                                 if await el.count() > 0:
@@ -402,15 +441,6 @@ Start now — search for "{roles}" in "{locations}".
                                     break
                             except Exception:
                                 continue
-                        if not filled:
-                            try:
-                                el = page.locator(f'textarea[aria-label*="{hint}" i], textarea[placeholder*="{hint}" i]').first
-                                if await el.count() > 0:
-                                    await el.fill(value)
-                                    filled = True
-                            except Exception:
-                                pass
-                        await asyncio.sleep(0.3)
                         return f"{'Filled' if filled else 'Could not find'}: {desc}"
                     except Exception as e:
                         return f"Fill error: {e}"
@@ -425,17 +455,17 @@ Start now — search for "{roles}" in "{locations}".
                             f'[aria-label*="{hint}" i]',
                             f'a:has-text("{hint}")',
                             f'[role="button"]:has-text("{hint}")',
+                            f'text="{hint}"',
                         ]:
                             try:
                                 el = page.locator(strategy).first
                                 if await el.count() > 0:
-                                    await el.click()
-                                    await asyncio.sleep(1.5)
-                                    break
+                                    await do_click_at(el, reason)
+                                    await asyncio.sleep(0.8)
+                                    return f"Clicked: {hint}"
                             except Exception:
                                 continue
-                        await take_screenshot(f"After click: {hint}")
-                        return f"Clicked: {hint}"
+                        return f"Could not find: {hint}"
                     except Exception as e:
                         return f"Click failed: {e}"
 
@@ -447,8 +477,7 @@ Start now — search for "{roles}" in "{locations}".
                         for strategy in [
                             f'select[aria-label*="{hint}" i]',
                             f'select[name*="{hint}" i]',
-                            f'label:has-text("{hint}") + select',
-                            f'label:has-text("{hint}") ~ select',
+                            f'label:has-text("{hint}") select',
                         ]:
                             try:
                                 el = page.locator(strategy).first
@@ -462,26 +491,24 @@ Start now — search for "{roles}" in "{locations}".
                         return f"Select error: {e}"
 
                 elif name == "upload_file":
-                    hint = inp["selector_hint"]
-                    path = inp.get("file_path", "")
+                    file_path = inp.get("file_path", resume.get("file_path", ""))
                     session.emit({"type": "action", "message": "Uploading resume..."})
-                    if not path:
+                    if not file_path:
                         return "No resume file path"
                     try:
                         import os
-                        if not os.path.exists(path):
-                            return f"File not found: {path}"
+                        if not os.path.exists(file_path):
+                            return f"File not found: {file_path}"
                         for strategy in [
-                            f'input[type="file"][aria-label*="{hint}" i]',
                             'input[type="file"][name*="resume" i]',
+                            'input[type="file"][aria-label*="resume" i]',
                             'input[type="file"]',
                         ]:
                             try:
                                 el = page.locator(strategy).first
                                 if await el.count() > 0:
-                                    await el.set_input_files(path)
-                                    await asyncio.sleep(1.5)
-                                    await take_screenshot("Resume uploaded")
+                                    await el.set_input_files(file_path)
+                                    await asyncio.sleep(1)
                                     return "Resume uploaded"
                             except Exception:
                                 continue
@@ -497,7 +524,7 @@ Start now — search for "{roles}" in "{locations}".
                     q = urllib.parse.quote_plus(query)
                     loc = urllib.parse.quote_plus(location)
                     if board == "linkedin":
-                        url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r86400"
+                        url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r86400&sortBy=DD"
                     elif board == "indeed":
                         url = f"https://www.indeed.com/jobs?q={q}&l={loc}&sort=date"
                     else:
@@ -505,9 +532,8 @@ Start now — search for "{roles}" in "{locations}".
                     session.emit({"type": "action", "message": f"Searching {board.title()} for '{query}' in '{location}'"})
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                        await asyncio.sleep(2.5)
-                        await take_screenshot(f"{board.title()} search results")
-                        return f"Searching {board} for '{query}' in '{location}'"
+                        await asyncio.sleep(1.5)
+                        return f"On {board} search for '{query}' in '{location}'"
                     except Exception as e:
                         return f"Search failed: {e}"
 
@@ -515,15 +541,14 @@ Start now — search for "{roles}" in "{locations}".
                     try:
                         text = await page.inner_text("body")
                         session.emit({"type": "action", "message": "Reading job listings..."})
-                        return text[:6000]
+                        return text[:7000]
                     except Exception as e:
-                        return f"Could not extract listings: {e}"
+                        return f"Could not extract: {e}"
 
                 elif name == "decide_on_job":
                     decision = inp["decision"]
                     title = inp["title"]
                     company = inp["company"]
-                    reason = inp["reason"]
                     score = inp.get("match_score", 0)
                     if decision == "apply":
                         session.jobs_found += 1
@@ -535,12 +560,11 @@ Start now — search for "{roles}" in "{locations}".
                         "location": inp.get("location", ""),
                         "url": inp.get("url", ""),
                         "match_score": score,
-                        "reason": reason,
+                        "reason": inp["reason"],
                     })
-                    return f"Decision: {decision} — {title} at {company} ({reason})"
+                    return f"{decision}: {title} at {company}"
 
                 elif name == "request_confirmation":
-                    await take_screenshot("Ready to submit — awaiting confirmation")
                     session.emit({
                         "type": "confirm_required",
                         "job_title": inp.get("job_title", ""),
@@ -552,13 +576,13 @@ Start now — search for "{roles}" in "{locations}".
                     decision = await session.wait_for_confirmation()
                     if decision == "confirm":
                         session.emit({"type": "action", "message": "✓ Confirmed — submitting..."})
-                        return "User confirmed. Proceed with submission."
+                        return "Confirmed. Proceed with submit_application."
                     elif decision == "skip":
-                        session.emit({"type": "action", "message": "Skipped — moving to next job..."})
-                        return "User skipped this job. Do NOT submit. Move to the next job."
-                    else:  # stop
+                        session.emit({"type": "action", "message": "Skipped — moving on..."})
+                        return "Skipped. Move to next job."
+                    else:
                         session.emit({"type": "action", "message": "Hunt stopped by user."})
-                        return "User stopped the hunt. Call finish_hunt immediately."
+                        return "Stopped. Call finish_hunt."
 
                 elif name == "submit_application":
                     if session._stopped:
@@ -566,12 +590,11 @@ Start now — search for "{roles}" in "{locations}".
                     hint = inp.get("submit_button_hint", "Submit")
                     job_title = inp.get("job_title", "")
                     company = inp.get("company", "")
-                    session.emit({"type": "action", "message": f"Submitting application to {company}..."})
+                    session.emit({"type": "action", "message": f"Submitting to {company}..."})
                     try:
                         for strategy in [
                             f'button:has-text("{hint}")',
                             'button[type="submit"]',
-                            'input[type="submit"]',
                             'button:has-text("Submit")',
                             'button:has-text("Apply")',
                             'button:has-text("Send Application")',
@@ -579,33 +602,19 @@ Start now — search for "{roles}" in "{locations}".
                             try:
                                 el = page.locator(strategy).first
                                 if await el.count() > 0:
-                                    await el.click()
-                                    await asyncio.sleep(2.5)
-                                    await take_screenshot("Application submitted!")
+                                    await do_click_at(el, "submit")
+                                    await asyncio.sleep(2)
                                     session.jobs_applied += 1
                                     session.emit({
                                         "type": "submitted",
                                         "message": f"Applied to {job_title} at {company}!",
                                         "jobs_applied": session.jobs_applied,
                                     })
-                                    # Persist to DB
-                                    try:
-                                        db = db_session_factory()
-                                        from app import models as m
-                                        from sqlalchemy.orm import Session
-                                        # Update hunt session stats
-                                        hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
-                                        if hs:
-                                            hs.jobs_found = session.jobs_found
-                                            hs.jobs_applied = session.jobs_applied
-                                            db.commit()
-                                        db.close()
-                                    except Exception:
-                                        pass
-                                    return f"Submitted application to {company}."
+                                    _persist_stats(session, db_session_factory)
+                                    return f"Submitted to {company}."
                             except Exception:
                                 continue
-                        return "Could not find submit button — skipping."
+                        return "Could not find submit button."
                     except Exception as e:
                         return f"Submit error: {e}"
 
@@ -622,77 +631,100 @@ Start now — search for "{roles}" in "{locations}".
                         "jobs_found": session.jobs_found,
                         "jobs_applied": session.jobs_applied,
                     })
-                    # Final DB update
-                    try:
-                        db = db_session_factory()
-                        from app import models as m
-                        hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
-                        if hs:
-                            hs.status = "complete"
-                            hs.jobs_found = session.jobs_found
-                            hs.jobs_applied = session.jobs_applied
-                            from sqlalchemy.sql import func
-                            hs.stopped_at = func.now()
-                            db.commit()
-                        db.close()
-                    except Exception:
-                        pass
+                    _finalize_db(session, db_session_factory, "complete")
                     return "Hunt finished."
 
                 return f"Unknown tool: {name}"
 
-            # ── Main agent loop ─────────────────────────────────────────────
+            # ── Main agent loop ──────────────────────────────────────────────
             messages = [{"role": "user", "content": self._build_prompt(user, resume or {})}]
             tools = self._build_tools()
 
-            while not session._stopped:
-                response = await self.client.messages.create(
-                    model="claude-opus-4-6",
-                    max_tokens=8192,
-                    system=HUNT_SYSTEM_PROMPT,
-                    tools=tools,
-                    messages=messages,
-                )
-
-                tool_results = []
-                finished = False
-                for block in response.content:
-                    if hasattr(block, "type") and block.type == "tool_use":
-                        result = await execute_tool(block.name, block.input)
-                        tool_results.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.id,
-                            "content": result,
-                        })
-                        if block.name == "finish_hunt":
-                            finished = True
-                            break
-
-                if response.stop_reason == "end_turn" or not tool_results or finished:
-                    if not finished:
-                        session.emit({"type": "complete", "message": "Hunt complete.", "jobs_found": session.jobs_found, "jobs_applied": session.jobs_applied})
-                    break
-
-                messages.append({"role": "assistant", "content": response.content})
-                messages.append({"role": "user", "content": tool_results})
-
-            await browser.close()
-
-        # Clean up DB on stop
-        if session._stopped:
             try:
-                db = db_session_factory()
-                from app import models as m
-                from sqlalchemy.sql import func
-                hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
-                if hs:
-                    hs.status = "stopped"
-                    hs.jobs_found = session.jobs_found
-                    hs.jobs_applied = session.jobs_applied
-                    hs.stopped_at = func.now()
-                    db.commit()
-                db.close()
-            except Exception:
-                pass
+                while not session._stopped:
+                    await session.check_paused()
+                    if session._stopped:
+                        break
+
+                    response = await self.client.messages.create(
+                        model="claude-opus-4-6",
+                        max_tokens=4096,
+                        system=HUNT_SYSTEM_PROMPT,
+                        tools=tools,
+                        messages=messages,
+                    )
+
+                    tool_results = []
+                    finished = False
+
+                    for block in response.content:
+                        if session._stopped:
+                            break
+                        if hasattr(block, "type") and block.type == "tool_use":
+                            result = await execute_tool(block.name, block.input)
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": block.id,
+                                "content": result,
+                            })
+                            if block.name == "finish_hunt":
+                                finished = True
+                                break
+
+                    if response.stop_reason == "end_turn" or not tool_results or finished:
+                        if not finished:
+                            session.emit({
+                                "type": "complete",
+                                "message": "Hunt complete.",
+                                "jobs_found": session.jobs_found,
+                                "jobs_applied": session.jobs_applied,
+                            })
+                            _finalize_db(session, db_session_factory, "complete")
+                        break
+
+                    messages.append({"role": "assistant", "content": response.content})
+                    messages.append({"role": "user", "content": tool_results})
+
+            finally:
+                screenshot_task.cancel()
+                try:
+                    await screenshot_task
+                except asyncio.CancelledError:
+                    pass
+                await browser.close()
+
+        if session._stopped:
+            _finalize_db(session, db_session_factory, "stopped")
 
         remove_hunt_session(session.hunt_id)
+
+
+def _persist_stats(session: HuntSession, factory):
+    try:
+        db = factory()
+        from app import models as m
+        hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
+        if hs:
+            hs.jobs_found = session.jobs_found
+            hs.jobs_applied = session.jobs_applied
+            db.commit()
+        db.close()
+    except Exception:
+        pass
+
+
+def _finalize_db(session: HuntSession, factory, status: str):
+    try:
+        db = factory()
+        from app import models as m
+        from sqlalchemy.sql import func
+        hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
+        if hs:
+            hs.status = status
+            hs.jobs_found = session.jobs_found
+            hs.jobs_applied = session.jobs_applied
+            hs.stopped_at = func.now()
+            db.commit()
+        db.close()
+    except Exception:
+        pass

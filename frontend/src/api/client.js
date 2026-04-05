@@ -76,5 +76,7 @@ export const createCheckout = (packId) => api.post(`/payments/checkout/${packId}
 // ─── Hunt ─────────────────────────────────────────────────────────────────────
 export const startHunt = () => api.post('/hunt/start').then(r => r.data)
 export const listHuntSessions = () => api.get('/hunt/sessions').then(r => r.data)
+export const pauseHunt = (id) => api.post(`/hunt/pause/${id}`).then(r => r.data)
+export const resumeHunt = (id, instruction) => api.post(`/hunt/resume/${id}`, { instruction }).then(r => r.data)
 
 export default api

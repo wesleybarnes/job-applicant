@@ -1,18 +1,22 @@
-import React, { useEffect, useRef, useState } from 'react'
-import { Monitor, Square, CheckCircle, XCircle, Loader2, Crosshair, Brain, ListChecks } from 'lucide-react'
+import React, { useEffect, useRef, useState, useCallback } from 'react'
+import { Square, CheckCircle, XCircle, Loader2, Crosshair, Brain, ListChecks, Pause, Play, Send } from 'lucide-react'
 import HuntConfirmModal from './HuntConfirmModal'
 import api, { SSE_BASE } from '../api/client'
 
 export default function HuntView({ huntId, onClose }) {
-  const [screenshot, setScreenshot] = useState(null)
-  const [log, setLog] = useState([])               // all action/status/thinking messages
-  const [decisions, setDecisions] = useState([])   // job decisions
-  const [status, setStatus] = useState('connecting')
+  const [screenshot, setScreenshot]   = useState(null)
+  const [cursor, setCursor]           = useState(null)   // {cx, cy}
+  const [log, setLog]                 = useState([])
+  const [decisions, setDecisions]     = useState([])
+  const [status, setStatus]           = useState('connecting')
   const [confirmData, setConfirmData] = useState(null)
-  const [stats, setStats] = useState({ found: 0, applied: 0 })
+  const [stats, setStats]             = useState({ found: 0, applied: 0 })
   const [finalMessage, setFinalMessage] = useState(null)
-  const [tab, setTab] = useState('decisions')
-  const logRef = useRef(null)
+  const [tab, setTab]                 = useState('decisions')
+  const [instruction, setInstruction] = useState('')
+  const logRef    = useRef(null)
+  const imgRef    = useRef(null)
+  const latestScreenshot = useRef(null)
 
   useEffect(() => {
     const es = new EventSource(`${SSE_BASE}/hunt/stream/${huntId}`)
@@ -32,12 +36,18 @@ export default function HuntView({ huntId, onClose }) {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [log, decisions, tab])
 
-  const handleEvent = (event) => {
+  const handleEvent = useCallback((event) => {
     switch (event.type) {
       case 'connected':
         setStatus('running'); addLog(event); break
       case 'screenshot':
-        setScreenshot(event.data); break
+        // Direct DOM update for zero-lag rendering — skip React re-render
+        if (imgRef.current && event.data) {
+          imgRef.current.src = `data:image/png;base64,${event.data}`
+          latestScreenshot.current = event.data
+        }
+        if (event.cx != null) setCursor({ cx: event.cx, cy: event.cy })
+        break
       case 'action':
       case 'status':
         addLog(event); break
@@ -70,7 +80,7 @@ export default function HuntView({ huntId, onClose }) {
         addLog(event)
         break
     }
-  }
+  }, [])
 
   const addLog = (event) => {
     const msg = event.message || ''
@@ -81,20 +91,32 @@ export default function HuntView({ huntId, onClose }) {
   const handleConfirm = async () => { setStatus('running'); setConfirmData(null); await api.post(`/hunt/confirm/${huntId}`) }
   const handleSkip    = async () => { setStatus('running'); setConfirmData(null); await api.post(`/hunt/skip/${huntId}`) }
   const handleStop    = async () => {
-    setStatus('stopping')
-    setConfirmData(null)
+    setStatus('stopping'); setConfirmData(null)
     await api.post(`/hunt/stop/${huntId}`)
     onClose?.()
+  }
+  const handlePause   = async () => {
+    setStatus('paused')
+    await api.post(`/hunt/pause/${huntId}`)
+  }
+  const handleResume  = async () => {
+    const inst = instruction.trim()
+    setInstruction('')
+    setStatus('running')
+    await api.post(`/hunt/resume/${huntId}`, { instruction: inst || null })
   }
 
   const statusCfg = {
     connecting: { label: 'Connecting...', color: 'text-yellow-300', spin: true },
     running:    { label: 'Hunting...', color: 'text-primary-300', spin: true },
+    paused:     { label: 'Paused', color: 'text-gold-400', spin: false },
     confirm:    { label: 'Needs Your Input', color: 'text-gold-400', spin: false },
     done:       { label: 'Complete', color: 'text-emerald-400', spin: false },
     error:      { label: 'Error', color: 'text-red-400', spin: false },
     stopping:   { label: 'Stopping...', color: 'text-red-300', spin: true },
   }[status] || { label: status, color: 'text-white', spin: false }
+
+  const isActive = !['done', 'error', 'stopping'].includes(status)
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0618' }}>
@@ -112,19 +134,36 @@ export default function HuntView({ huntId, onClose }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
-          {/* Stats */}
+        <div className="flex items-center gap-3">
           <div className="flex items-center gap-4 text-sm">
             <span className="text-primary-300">{stats.found} jobs found</span>
             <span className="text-emerald-400 font-semibold">{stats.applied} applied</span>
           </div>
-          {/* Stop button — always visible */}
-          {status !== 'done' && status !== 'stopping' && (
-            <button onClick={handleStop} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-xl font-semibold text-sm transition-colors">
+
+          {/* Pause/Resume */}
+          {status === 'running' && (
+            <button onClick={handlePause} className="flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-gold-300 px-3 py-1.5 rounded-xl font-semibold text-sm border border-white/15 transition-colors">
+              <Pause className="w-3.5 h-3.5" /> Pause
+            </button>
+          )}
+          {status === 'paused' && (
+            <button onClick={handleResume} className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-xl font-semibold text-sm transition-colors">
+              <Play className="w-3.5 h-3.5" /> Resume
+            </button>
+          )}
+
+          {/* Stop */}
+          {isActive && status !== 'paused' && (
+            <button onClick={handleStop} className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-xl font-semibold text-sm transition-colors">
               <Square className="w-3.5 h-3.5" /> Stop
             </button>
           )}
-          {(status === 'done' || status === 'stopping') && (
+          {status === 'paused' && (
+            <button onClick={handleStop} className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-xl font-semibold text-sm transition-colors">
+              <Square className="w-3.5 h-3.5" /> Stop
+            </button>
+          )}
+          {['done', 'error', 'stopping'].includes(status) && (
             <button onClick={onClose} className="text-primary-300 hover:text-white text-sm px-4 py-1.5 rounded-xl hover:bg-white/10 transition-colors">
               Close
             </button>
@@ -134,18 +173,70 @@ export default function HuntView({ huntId, onClose }) {
 
       {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
+
         {/* Screenshot panel */}
         <div className="flex-1 bg-black flex items-center justify-center relative overflow-hidden">
-          {screenshot
-            ? <img src={`data:image/png;base64,${screenshot}`} alt="Browser" className="max-w-full max-h-full object-contain" />
-            : (
-              <div className="text-center">
+          {/* Use img ref for direct DOM updates — bypasses React for zero lag */}
+          <img
+            ref={imgRef}
+            alt="Browser"
+            className="max-w-full max-h-full object-contain"
+            style={{ display: 'block' }}
+          />
+
+          {/* Cursor overlay */}
+          {cursor && imgRef.current && (
+            <div
+              className="absolute pointer-events-none"
+              style={{
+                left: `${(cursor.cx / 1280) * 100}%`,
+                top: `${(cursor.cy / 900) * 100}%`,
+                transform: 'translate(-50%, -50%)',
+                zIndex: 10,
+              }}
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                <path d="M4 4l7 18 3-7 7-3z" fill="rgba(245,158,11,0.9)" stroke="#f59e0b" strokeWidth="1.5"/>
+              </svg>
+            </div>
+          )}
+
+          {/* Paused overlay */}
+          {status === 'paused' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)' }}>
+              <div className="rounded-2xl px-8 py-6 text-center border border-white/10 max-w-md w-full mx-4" style={{ background: '#1a1230' }}>
+                <Pause className="w-10 h-10 text-gold-400 mx-auto mb-3" />
+                <p className="font-bold text-white text-lg mb-1">Agent Paused</p>
+                <p className="text-primary-400 text-sm mb-4">You have control. Give an instruction or just resume.</p>
+                <div className="flex gap-2">
+                  <input
+                    value={instruction}
+                    onChange={e => setInstruction(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleResume()}
+                    placeholder="Optional: tell the agent what to do next..."
+                    className="flex-1 bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-primary-500 outline-none focus:border-primary-500"
+                    autoFocus
+                  />
+                  <button onClick={handleResume} className="btn-gold flex items-center gap-1.5 px-4 py-2 text-sm">
+                    <Play className="w-3.5 h-3.5" />
+                    {instruction ? 'Send' : 'Resume'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* No screenshot yet */}
+          {!imgRef.current?.src && (
+            <div className="absolute inset-0 flex items-center justify-center text-center pointer-events-none">
+              <div>
                 <Crosshair className="w-20 h-20 text-primary-700 mx-auto mb-4" />
                 <p className="text-primary-400 text-sm">Starting hunt...</p>
                 <p className="text-primary-600 text-xs mt-1">Claude is opening the browser</p>
               </div>
-            )
-          }
+            </div>
+          )}
+
           {finalMessage && (
             <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)' }}>
               <div className="rounded-2xl px-12 py-10 text-center border border-white/10 max-w-sm" style={{ background: '#1a1230' }}>
@@ -164,7 +255,6 @@ export default function HuntView({ huntId, onClose }) {
 
         {/* Right panel */}
         <div className="w-80 border-l border-white/10 flex flex-col" style={{ background: '#0f0a1e' }}>
-          {/* Tabs */}
           <div className="flex border-b border-white/10">
             {[
               { id: 'decisions', label: 'Decisions', icon: ListChecks },
@@ -215,10 +305,10 @@ export default function HuntView({ huntId, onClose }) {
               ) : (
                 [...log].reverse().map(entry => (
                   <div key={entry.id} className={`flex gap-2 items-start ${
-                    entry.type === 'thinking'        ? 'text-primary-400 italic' :
-                    entry.type === 'error'           ? 'text-red-400' :
-                    entry.type === 'submitted'       ? 'text-emerald-400 font-semibold' :
-                    entry.type === 'confirm_required'? 'text-gold-400 font-semibold' :
+                    entry.type === 'thinking'         ? 'text-primary-400 italic' :
+                    entry.type === 'error'            ? 'text-red-400' :
+                    entry.type === 'submitted'        ? 'text-emerald-400 font-semibold' :
+                    entry.type === 'confirm_required' ? 'text-gold-400 font-semibold' :
                     'text-primary-300'
                   }`}>
                     <span className="flex-shrink-0 mt-0.5">
@@ -239,7 +329,6 @@ export default function HuntView({ huntId, onClose }) {
       {confirmData && (
         <HuntConfirmModal
           data={confirmData}
-          screenshot={screenshot}
           huntId={huntId}
           onConfirm={handleConfirm}
           onSkip={handleSkip}
