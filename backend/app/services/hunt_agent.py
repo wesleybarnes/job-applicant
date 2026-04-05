@@ -273,45 +273,45 @@ class AutonomousHuntAgent:
             },
         ]
 
-    def _build_prompt(self, user, resume) -> str:
-        roles = ', '.join(user.target_roles or []) or 'relevant roles'
-        locations = ', '.join(user.target_locations or []) or user.location or 'Remote'
-        skills = ', '.join(user.skills or []) or 'not specified'
-        resume_path = resume.file_path if resume else ''
-        salary = ''
-        if user.salary_min or user.salary_max:
-            salary = f"${user.salary_min or 0:,} – ${user.salary_max or 0:,}"
+    def _build_prompt(self, user: dict, resume: dict) -> str:
+        roles = ', '.join(user.get('target_roles') or []) or 'relevant roles'
+        locations = ', '.join(user.get('target_locations') or []) or user.get('location') or 'Remote'
+        skills = ', '.join(user.get('skills') or []) or 'not specified'
+        resume_path = resume.get('file_path', '') if resume else ''
+        salary_min = user.get('salary_min')
+        salary_max = user.get('salary_max')
+        salary = f"${salary_min or 0:,} – ${salary_max or 0:,}" if (salary_min or salary_max) else 'Flexible'
 
         return f"""Hunt for jobs and apply on behalf of this candidate.
 
 ## Candidate Profile
-Name: {user.full_name}
-Email: {user.email}
-Phone: {user.phone or 'Not provided'}
-Location: {user.location or 'Not provided'}
-LinkedIn: {user.linkedin_url or ''}
-GitHub: {user.github_url or ''}
-Years of experience: {user.years_experience or 'Not specified'}
-Education: {user.education_level or 'Not specified'}
-Work authorization: {user.work_authorization or 'Not specified'}
-Willing to relocate: {'Yes' if user.willing_to_relocate else 'No'}
-Salary expectation: {salary or 'Flexible'}
+Name: {user.get('full_name', '')}
+Email: {user.get('email', '')}
+Phone: {user.get('phone') or 'Not provided'}
+Location: {user.get('location') or 'Not provided'}
+LinkedIn: {user.get('linkedin_url') or ''}
+GitHub: {user.get('github_url') or ''}
+Years of experience: {user.get('years_experience') or 'Not specified'}
+Education: {user.get('education_level') or 'Not specified'}
+Work authorization: {user.get('work_authorization') or 'Not specified'}
+Willing to relocate: {'Yes' if user.get('willing_to_relocate') else 'No'}
+Salary expectation: {salary}
 Resume file path: {resume_path}
 
 ## Job Targets
 Target roles: {roles}
 Target locations: {locations}
-Remote preference: {user.remote_preference or 'any'}
-Target industries: {', '.join(user.target_industries or []) or 'any'}
+Remote preference: {user.get('remote_preference') or 'any'}
+Target industries: {', '.join(user.get('target_industries') or []) or 'any'}
 
 ## Skills
 {skills}
 
 ## Professional Summary
-{user.summary or 'Not provided'}
+{user.get('summary') or 'Not provided'}
 
 ## Pre-written Application Answers (use these verbatim)
-{json.dumps(user.custom_answers or {}, indent=2)}
+{json.dumps(user.get('custom_answers') or {}, indent=2)}
 
 ## Instructions
 1. Call `emit_thinking` to explain your plan
@@ -642,7 +642,7 @@ Start now — search for "{roles}" in "{locations}".
                 return f"Unknown tool: {name}"
 
             # ── Main agent loop ─────────────────────────────────────────────
-            messages = [{"role": "user", "content": self._build_prompt(user, resume)}]
+            messages = [{"role": "user", "content": self._build_prompt(user, resume or {})}]
             tools = self._build_tools()
 
             while not session._stopped:

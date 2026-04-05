@@ -61,16 +61,42 @@ async def start_hunt(
     # Create in-memory session
     session = create_hunt_session(hunt_db.id, current_user.id)
 
-    # Copy user data so background task isn't tied to closed DB session
-    user_snapshot = current_user
+    # Snapshot all DB data into plain dicts NOW, before the session closes
+    user_data = {
+        "id": current_user.id,
+        "full_name": current_user.full_name,
+        "email": current_user.email,
+        "phone": current_user.phone,
+        "location": current_user.location,
+        "linkedin_url": current_user.linkedin_url,
+        "github_url": current_user.github_url,
+        "target_roles": current_user.target_roles or [],
+        "target_locations": current_user.target_locations or [],
+        "target_industries": current_user.target_industries or [],
+        "skills": current_user.skills or [],
+        "summary": current_user.summary,
+        "years_experience": current_user.years_experience,
+        "education_level": current_user.education_level,
+        "work_authorization": current_user.work_authorization,
+        "willing_to_relocate": current_user.willing_to_relocate,
+        "remote_preference": current_user.remote_preference,
+        "salary_min": current_user.salary_min,
+        "salary_max": current_user.salary_max,
+        "custom_answers": current_user.custom_answers or {},
+    }
+    resume_data = {
+        "file_path": resume.file_path,
+        "filename": resume.filename,
+        "parsed_text": resume.parsed_text,
+    }
 
     agent = AutonomousHuntAgent()
 
     async def run_agent():
         try:
             await agent.run(
-                user=user_snapshot,
-                resume=resume,
+                user=user_data,
+                resume=resume_data,
                 session=session,
                 db_session_factory=SessionLocal,
             )
