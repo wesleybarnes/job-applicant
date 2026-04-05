@@ -15,12 +15,12 @@ from app.config import settings
 from app.database import get_db
 from app import models
 
-# Decode the Clerk domain from the publishable key
-# pk_test_BASE64$ → base64 decode → "your-app.clerk.accounts.dev$"
-import base64
-_raw = settings.clerk_publishable_key.split("_", 2)[-1]  # strip pk_test_ / pk_live_
+# Derive Clerk domain from the publishable key (works for both dev and prod keys)
+# pk_test_BASE64$ or pk_live_BASE64$ → base64 decode → "your-app.clerk.accounts.dev$"
+import base64 as _b64
+_raw = settings.clerk_publishable_key.split("_", 2)[-1]
 _padded = _raw + "=" * (-len(_raw) % 4)
-CLERK_DOMAIN = base64.b64decode(_padded).decode().rstrip("$")
+CLERK_DOMAIN = _b64.b64decode(_padded).decode("utf-8", errors="ignore").rstrip("$")
 JWKS_URL = f"https://{CLERK_DOMAIN}/.well-known/jwks.json"
 
 bearer_scheme = HTTPBearer(auto_error=False)
