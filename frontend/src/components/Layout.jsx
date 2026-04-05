@@ -8,22 +8,17 @@ import clsx from 'clsx'
 
 const NAV = [
   { to: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/hunt',         icon: Crosshair,        label: 'Hunt Jobs' },
+  { to: '/hunt',         icon: Crosshair,        label: 'Hunt Jobs', badge: 'NEW' },
   { to: '/jobs',         icon: Briefcase,         label: 'Find Jobs' },
   { to: '/applications', icon: FileText,          label: 'Applications' },
 ]
 
-function EnviaLogo() {
+function Logo() {
   return (
-    <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#a78bfa"/>
-          <stop offset="100%" stopColor="#7c3aed"/>
-        </linearGradient>
-      </defs>
-      <polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="url(#logoGrad)"/>
-      <polygon points="20,9 13,15.5 17,15.5 12,23 19,16.5 15,16.5" fill="#f59e0b"/>
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#4B9CD3"/>
+      <path d="M10 22l4-12 4 12M12.5 17h5" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="23" cy="10" r="2.5" fill="white" opacity="0.9"/>
     </svg>
   )
 }
@@ -36,39 +31,37 @@ export default function Layout() {
   const isAdmin = appUser?.is_admin
 
   return (
-    <div className="min-h-screen flex">
-      <aside
-        className="w-64 flex flex-col flex-shrink-0"
-        style={{ background: 'linear-gradient(180deg, #120630 0%, #1e0a4a 100%)' }}
-      >
+    <div className="min-h-screen flex bg-slate-50">
+      {/* Sidebar */}
+      <aside className="w-60 flex flex-col flex-shrink-0 bg-white border-r border-slate-100" style={{ boxShadow: '1px 0 0 #F1F5F9' }}>
         {/* Logo */}
-        <div className="p-6 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <EnviaLogo />
+        <div className="px-5 py-5 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <Logo />
             <div>
-              <span className="font-display font-bold text-lg text-white tracking-tight">Envia</span>
-              <p className="text-xs text-primary-300 mt-0.5">Powered by Claude</p>
+              <span className="font-bold text-lg text-slate-900 tracking-tight">Envia</span>
+              <p className="text-xs text-slate-400">Powered by Claude</p>
             </div>
           </div>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 p-4 space-y-1">
-          {NAV.map(({ to, icon: Icon, label }) => (
+        <nav className="flex-1 px-3 py-4 space-y-0.5">
+          {NAV.map(({ to, icon: Icon, label, badge }) => (
             <NavLink key={to} to={to} className={({ isActive }) =>
               clsx(
                 'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
                 isActive
-                  ? 'bg-white/15 text-white shadow-sm'
-                  : 'text-primary-300 hover:bg-white/8 hover:text-white'
+                  ? 'bg-primary-50 text-primary-700'
+                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
               )
             }>
               {({ isActive }) => (
                 <>
-                  <Icon className={clsx('w-4 h-4', isActive ? 'text-gold-400' : '')} />
+                  <Icon className={clsx('w-4 h-4 flex-shrink-0', isActive ? 'text-primary-500' : 'text-slate-400')} />
                   {label}
-                  {to === '/hunt' && (
-                    <span className="ml-auto text-xs px-1.5 py-0.5 rounded-full bg-gold-500/20 text-gold-400 font-semibold">NEW</span>
+                  {badge && (
+                    <span className="ml-auto text-xs px-1.5 py-0.5 rounded-full bg-primary-100 text-primary-600 font-semibold">{badge}</span>
                   )}
                 </>
               )}
@@ -77,38 +70,36 @@ export default function Layout() {
         </nav>
 
         {/* Credits + User */}
-        <div className="p-4 border-t border-white/10 space-y-3">
+        <div className="px-3 py-4 border-t border-slate-100 space-y-3">
           {isAdmin ? (
-            <div className="flex items-center gap-2 px-3 py-2 bg-gold-500/15 rounded-xl border border-gold-500/25">
-              <Crown className="w-4 h-4 text-gold-400" />
-              <span className="text-sm font-semibold text-gold-300">Admin — Unlimited</span>
+            <div className="flex items-center gap-2 px-3 py-2 bg-primary-50 rounded-xl border border-primary-100">
+              <Crown className="w-4 h-4 text-primary-500" />
+              <span className="text-sm font-semibold text-primary-700">Admin — Unlimited</span>
             </div>
           ) : (
             <button
               onClick={() => setShowCredits(true)}
-              className="w-full flex items-center justify-between px-3 py-2 bg-white/8 hover:bg-white/15 rounded-xl border border-white/15 transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 bg-slate-50 hover:bg-primary-50 rounded-xl border border-slate-200 transition-colors"
             >
               <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-gold-400" />
-                <span className="text-sm font-medium text-white">
-                  {credits} credit{credits !== 1 ? 's' : ''}
-                </span>
+                <Zap className="w-4 h-4 text-primary-500" />
+                <span className="text-sm font-medium text-slate-700">{credits} credit{credits !== 1 ? 's' : ''}</span>
               </div>
-              <span className="text-xs text-gold-400 font-semibold">+ Add</span>
+              <span className="text-xs text-primary-600 font-semibold">+ Add</span>
             </button>
           )}
 
-          <div className="flex items-center gap-3 px-1">
+          <div className="flex items-center gap-2.5 px-1">
             <UserButton afterSignOutUrl="/" />
             <div className="min-w-0">
-              <p className="text-sm font-medium text-white truncate">{appUser?.full_name}</p>
-              <p className="text-xs text-primary-300 truncate">{appUser?.email}</p>
+              <p className="text-sm font-semibold text-slate-800 truncate">{appUser?.full_name}</p>
+              <p className="text-xs text-slate-400 truncate">{appUser?.email}</p>
             </div>
           </div>
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto bg-gray-50">
+      <main className="flex-1 overflow-auto">
         <Outlet />
       </main>
 

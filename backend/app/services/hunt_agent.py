@@ -22,9 +22,10 @@ class HuntSession:
         self._resume_event: asyncio.Event = asyncio.Event()
         self._resume_event.set()  # not paused by default
         self._user_instruction: Optional[str] = None
+        self._question_event: asyncio.Event = asyncio.Event()
+        self._question_answer: Optional[str] = None
         self.jobs_found = 0
         self.jobs_applied = 0
-        # Last known cursor position for frontend overlay
         self.cursor_x: Optional[int] = None
         self.cursor_y: Optional[int] = None
 
@@ -65,6 +66,10 @@ class HuntSession:
         self._user_instruction = None
         return inst
 
+    def answer_question(self, answer: str):
+        self._question_answer = answer
+        self._question_event.set()
+
     def stop(self):
         self._stopped = True
         self._paused = False
@@ -103,11 +108,11 @@ If linkedin_email and linkedin_password are in the candidate profile:
 5. Wait for redirect, take screenshot
 If no credentials: skip login, go straight to job search.
 
-## STEP 2: Search for Jobs
-Search LinkedIn Jobs FIRST (best for international roles):
-- URL: https://www.linkedin.com/jobs/search/?keywords=ROLE&location=LOCATION&f_TPR=r604800&sortBy=DD
-Use the exact target roles and locations from the candidate profile.
-Also try Google Jobs: https://www.google.com/search?q=ROLE+jobs+LOCATION&ibp=htl;jobs
+## STEP 2: Search for Jobs (in this order)
+1. LinkedIn Jobs (if logged in, use Easy Apply) — search_job_board board="linkedin"
+2. TokyoDev — search_job_board board="tokyodev" (best English-language Japan tech jobs)
+3. GaijinPot — search_job_board board="gaijinpot" (Japan English jobs)
+SKIP Indeed — always blocked by Cloudflare on headless browsers.
 
 ## STEP 3: Evaluate Each Listing FAST
 For each job visible on screen:
@@ -137,8 +142,9 @@ Apply using the ATS form (Greenhouse, Lever, Workday, etc.)
 - ALWAYS call request_confirmation before ANY submit button
 - If a page requires login you don't have, call decide_on_job with skip and move on
 - call emit_thinking ONLY for major decisions, not every action
+- Use ask_user when you genuinely need info from the user (missing field, unclear preference)
 - After evaluating 15+ jobs or completing 3+ applications, call finish_hunt
-- Indeed is usually blocked by Cloudflare — skip it entirely
+- Indeed is always blocked by Cloudflare — skip it entirely
 """
 
 
@@ -229,7 +235,7 @@ class AutonomousHuntAgent:
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "board": {"type": "string", "enum": ["linkedin", "indeed", "google"]},
+                        "board": {"type": "string", "enum": ["linkedin", "tokyodev", "gaijinpot", "indeed", "google"]},
                         "query": {"type": "string"},
                         "location": {"type": "string"},
                     },
@@ -293,6 +299,18 @@ class AutonomousHuntAgent:
                     "type": "object",
                     "properties": {"thought": {"type": "string"}},
                     "required": ["thought"],
+                },
+            },
+            {
+                "name": "ask_user",
+                "description": "Ask the user a question and wait for their answer. Use when you need info you don't have (e.g. years of experience for a form, cover letter preference, whether to apply to a specific company).",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "question": {"type": "string"},
+                        "options": {"type": "array", "items": {"type": "string"}, "description": "Optional quick-reply options"},
+                    },
+                    "required": ["question"],
                 },
             },
             {
@@ -378,12 +396,27 @@ START NOW. {"Login to LinkedIn first, then search." if user.get('linkedin_email'
                     '--no-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-blink-features=AutomationControlled',
+                    '--disable-infobars',
+                    '--window-size=1280,900',
+                    '--disable-extensions',
                 ]
             )
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
                 user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                locale="en-US",
+                timezone_id="Asia/Tokyo",
             )
+            # Stealth: hide webdriver fingerprint
+            await context.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                window.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'permissions', {
+                    get: () => ({ query: () => Promise.resolve({ state: 'granted' }) })
+                });
+            """)
             page = await context.new_page()
 
             # ── Continuous screenshot stream (3fps independent of agent) ──────
@@ -554,7 +587,11 @@ START NOW. {"Login to LinkedIn first, then search." if user.get('linkedin_email'
                     q = urllib.parse.quote_plus(query)
                     loc = urllib.parse.quote_plus(location)
                     if board == "linkedin":
-                        url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r86400&sortBy=DD"
+                        url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r604800&sortBy=DD"
+                    elif board == "tokyodev":
+                        url = f"https://www.tokyodev.com/jobs?q={q}"
+                    elif board == "gaijinpot":
+                        url = f"https://jobs.gaijinpot.com/job/search/index?search%5Bkeyword%5D={q}&search%5Bpublished%5D=1"
                     elif board == "indeed":
                         url = f"https://www.indeed.com/jobs?q={q}&l={loc}&sort=date"
                     else:
@@ -647,6 +684,17 @@ START NOW. {"Login to LinkedIn first, then search." if user.get('linkedin_email'
                         return "Could not find submit button."
                     except Exception as e:
                         return f"Submit error: {e}"
+
+                elif name == "ask_user":
+                    question = inp.get("question", "")
+                    options = inp.get("options", [])
+                    session.emit({"type": "question", "message": question, "options": options})
+                    session._question_event.clear()
+                    session._question_answer = None
+                    await session._question_event.wait()
+                    answer = session._question_answer or "No answer provided, use your best judgment."
+                    session.emit({"type": "action", "message": f"User answered: {answer}"})
+                    return f"User answered: {answer}"
 
                 elif name == "emit_thinking":
                     thought = inp.get("thought", "")

@@ -1,105 +1,103 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  * { box-sizing: border-box; }
   body {
-    @apply bg-gray-50 text-gray-900;
     font-family: 'Inter', system-ui, sans-serif;
+    background: #F8FAFF;
+    color: #0F172A;
+    -webkit-font-smoothing: antialiased;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-gradient-to-r from-primary-600 to-primary-700 text-white
-           px-4 py-2 rounded-xl font-semibold
-           shadow-md shadow-primary-900/20
-           hover:from-primary-700 hover:to-primary-800
-           focus:outline-none focus:ring-2 focus:ring-gold-400 focus:ring-offset-2
-           disabled:opacity-40 disabled:cursor-not-allowed
-           transition-all duration-150;
+    @apply inline-flex items-center justify-center gap-2
+           bg-primary-500 hover:bg-primary-600 active:bg-primary-700
+           text-white font-semibold px-5 py-2.5 rounded-xl
+           transition-all duration-150 cursor-pointer;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+  }
+  .btn-primary:disabled {
+    @apply bg-primary-200 text-primary-400 cursor-not-allowed shadow-none;
   }
 
   .btn-secondary {
-    @apply bg-white text-primary-700 px-4 py-2 rounded-xl font-medium
-           border border-primary-200
-           hover:bg-primary-50 hover:border-primary-400
-           focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-1
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-all duration-150;
-  }
-
-  .btn-gold {
-    @apply bg-gradient-to-r from-gold-500 to-gold-600 text-white
-           px-6 py-3 rounded-2xl font-bold
-           hover:from-gold-600 hover:to-gold-700
-           focus:outline-none focus:ring-2 focus:ring-gold-300 focus:ring-offset-2
-           disabled:opacity-40 disabled:cursor-not-allowed
-           transition-all duration-150;
-    box-shadow: 0 4px 20px rgba(245,158,11,0.3);
+    @apply inline-flex items-center justify-center gap-2
+           bg-white hover:bg-sky-50 text-primary-700 font-semibold
+           px-5 py-2.5 rounded-xl border border-primary-200
+           transition-all duration-150 cursor-pointer;
   }
 
   .btn-danger {
-    @apply bg-red-600 text-white px-4 py-2 rounded-xl font-semibold
-           hover:bg-red-700
-           focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2
-           disabled:opacity-40 disabled:cursor-not-allowed
-           transition-all duration-150;
+    @apply inline-flex items-center justify-center gap-2
+           bg-red-500 hover:bg-red-600 text-white font-semibold
+           px-5 py-2.5 rounded-xl transition-all duration-150;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2
+           text-primary-600 hover:bg-primary-50 font-semibold
+           px-4 py-2 rounded-xl transition-all duration-150;
+  }
+
+  /* Keep btn-gold for hunt view dark elements */
+  .btn-gold {
+    @apply inline-flex items-center justify-center gap-2
+           bg-primary-500 hover:bg-primary-600 text-white font-semibold
+           px-5 py-2.5 rounded-xl transition-all duration-150;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.3);
   }
 
   .card {
-    @apply bg-white rounded-2xl border border-primary-100/60 p-6
-           transition-shadow duration-200;
-    box-shadow: 0 0 0 1px rgba(124,58,237,0.08), 0 4px 20px rgba(124,58,237,0.06);
+    @apply bg-white rounded-2xl border border-slate-100 p-6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(75,156,211,0.07);
+    transition: box-shadow 0.2s;
   }
   .card:hover {
-    box-shadow: 0 0 0 1px rgba(124,58,237,0.15), 0 8px 40px rgba(124,58,237,0.12);
+    box-shadow: 0 4px 24px rgba(37,99,235,0.12);
   }
 
   .input {
-    @apply w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm
-           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-300
-           placeholder:text-gray-400
-           transition-colors duration-150;
+    @apply w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5
+           text-sm text-slate-900 placeholder-slate-400
+           outline-none transition-all;
+  }
+  .input:focus {
+    @apply border-primary-400;
+    box-shadow: 0 0 0 3px rgba(75,156,211,0.15);
   }
 
-  .label {
-    @apply block text-sm font-semibold text-gray-700 mb-1;
-  }
+  .label { @apply block text-sm font-semibold text-slate-700 mb-1.5; }
 
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full
-           text-xs font-semibold tracking-wide;
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5
+           rounded-full text-xs font-semibold;
   }
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #7c3aed; border-radius: 3px; }
-
-/* Animations */
-@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-.cursor-blink { animation: blink 1s step-end infinite; }
+::-webkit-scrollbar-track { background: #F0F9FF; }
+::-webkit-scrollbar-thumb { background: #93C5FD; border-radius: 3px; }
 
 @keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position:  200% center; }
+  0%   { background-position: 0% center; }
+  100% { background-position: 200% center; }
 }
 .text-shimmer {
-  background: linear-gradient(90deg, #f59e0b 0%, #fde68a 40%, #f59e0b 100%);
+  background: linear-gradient(90deg, #1D4ED8 0%, #4B9CD3 50%, #1D4ED8 100%);
   background-size: 200% auto;
-  animation: shimmer 2.5s linear infinite;
+  animation: shimmer 3s linear infinite;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.hero-glow {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,58,237,0.5) 0%, transparent 70%);
-  pointer-events: none;
+.hero-gradient {
+  background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 40%, #F0F9FF 100%);
 }

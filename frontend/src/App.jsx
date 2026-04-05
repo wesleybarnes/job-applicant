@@ -15,7 +15,7 @@ export const useAppUser = () => useContext(AppUserContext)
 
 function Spinner() {
   return (
-    <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0618' }}>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
       <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full" />
     </div>
   )
@@ -24,26 +24,23 @@ function Spinner() {
 function BackendError({ error, onRetry }) {
   const { signOut } = useAuth()
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0a0618' }}>
-      <div className="text-center max-w-md">
-        <div className="w-14 h-14 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center mx-auto mb-4">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50">
+      <div className="text-center max-w-md bg-white rounded-2xl p-8 shadow-card border border-slate-100">
+        <div className="w-14 h-14 rounded-2xl bg-red-50 border border-red-100 flex items-center justify-center mx-auto mb-4">
           <span className="text-2xl">⚠️</span>
         </div>
-        <h2 className="font-bold text-white text-xl mb-2">Can't reach the server</h2>
-        <p className="text-primary-400 text-sm mb-3 leading-relaxed">
+        <h2 className="font-bold text-slate-900 text-xl mb-2">Can't reach the server</h2>
+        <p className="text-slate-500 text-sm mb-3 leading-relaxed">
           The backend isn't responding. Try again, or sign out and back in.
         </p>
         {error && (
-          <p className="text-red-400 text-xs font-mono bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2 mb-6 break-all">
+          <p className="text-red-500 text-xs font-mono bg-red-50 border border-red-100 rounded-lg px-3 py-2 mb-6 break-all">
             {String(error)}
           </p>
         )}
         <div className="flex flex-col gap-3">
-          <button onClick={onRetry} className="btn-primary px-8">Retry</button>
-          <button
-            onClick={() => signOut({ redirectUrl: '/' })}
-            className="text-sm text-primary-400 hover:text-white transition-colors"
-          >
+          <button onClick={onRetry} className="btn-primary px-8 w-full">Retry</button>
+          <button onClick={() => signOut({ redirectUrl: '/' })} className="text-sm text-slate-400 hover:text-slate-700 transition-colors">
             Sign out
           </button>
         </div>
@@ -54,7 +51,7 @@ function BackendError({ error, onRetry }) {
 
 function AuthPage({ children }) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(135deg, #120630 0%, #3b0764 50%, #1e0a4a 100%)' }}>
+    <div className="min-h-screen flex items-center justify-center p-4 hero-gradient">
       {children}
     </div>
   )

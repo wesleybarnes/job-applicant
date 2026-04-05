@@ -27,6 +27,9 @@ class HuntStartRequest(BaseModel):
 class ResumeRequest(BaseModel):
     instruction: Optional[str] = None
 
+class AnswerRequest(BaseModel):
+    answer: str
+
 
 @router.post("/start")
 async def start_hunt(
@@ -180,6 +183,15 @@ async def skip_hunt_job(hunt_id: int):
         raise HTTPException(status_code=404, detail="No active hunt session")
     session.resolve_confirmation("skip")
     return {"status": "skipped"}
+
+
+@router.post("/answer/{hunt_id}")
+async def answer_agent_question(hunt_id: int, body: AnswerRequest):
+    session = get_hunt_session(hunt_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="No active hunt session")
+    session.answer_question(body.answer)
+    return {"status": "answered"}
 
 
 @router.post("/pause/{hunt_id}")

@@ -4,19 +4,19 @@ import HuntConfirmModal from './HuntConfirmModal'
 import api, { SSE_BASE } from '../api/client'
 
 export default function HuntView({ huntId, onClose }) {
-  const [screenshot, setScreenshot]   = useState(null)
-  const [cursor, setCursor]           = useState(null)   // {cx, cy}
+  const [cursor, setCursor]           = useState(null)
   const [log, setLog]                 = useState([])
   const [decisions, setDecisions]     = useState([])
   const [status, setStatus]           = useState('connecting')
   const [confirmData, setConfirmData] = useState(null)
+  const [questionData, setQuestionData] = useState(null)  // {message, options}
+  const [questionAnswer, setQuestionAnswer] = useState('')
   const [stats, setStats]             = useState({ found: 0, applied: 0 })
   const [finalMessage, setFinalMessage] = useState(null)
   const [tab, setTab]                 = useState('decisions')
   const [instruction, setInstruction] = useState('')
   const logRef    = useRef(null)
   const imgRef    = useRef(null)
-  const latestScreenshot = useRef(null)
 
   useEffect(() => {
     const es = new EventSource(`${SSE_BASE}/hunt/stream/${huntId}`)
@@ -56,6 +56,10 @@ export default function HuntView({ huntId, onClose }) {
       case 'job_decision':
         setDecisions(prev => [...prev, { ...event, id: Date.now() + Math.random() }])
         if (event.decision === 'apply') setStats(s => ({ ...s, found: s.found + 1 }))
+        break
+      case 'question':
+        setQuestionData(event)
+        addLog({ type: 'confirm_required', message: `❓ ${event.message}` })
         break
       case 'confirm_required':
         setStatus('confirm')
@@ -99,6 +103,13 @@ export default function HuntView({ huntId, onClose }) {
     setStatus('paused')
     await api.post(`/hunt/pause/${huntId}`)
   }
+  const handleAnswerQuestion = async (answer) => {
+    const ans = answer || questionAnswer
+    setQuestionData(null)
+    setQuestionAnswer('')
+    await api.post(`/hunt/answer/${huntId}`, { answer: ans })
+  }
+
   const handleResume  = async () => {
     const inst = instruction.trim()
     setInstruction('')
@@ -334,6 +345,49 @@ export default function HuntView({ huntId, onClose }) {
           onSkip={handleSkip}
           onStop={handleStop}
         />
+      )}
+
+      {/* Agent question modal */}
+      {questionData && (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center p-4 pb-8" style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div className="rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/10" style={{ background: '#1a2744' }}>
+            <div className="px-5 py-4 border-b border-white/10 flex items-center gap-2">
+              <span className="text-lg">❓</span>
+              <p className="font-semibold text-white text-sm">Agent needs your input</p>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-primary-100 text-sm leading-relaxed">{questionData.message}</p>
+              {questionData.options?.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {questionData.options.map((opt, i) => (
+                    <button key={i} onClick={() => handleAnswerQuestion(opt)}
+                      className="px-3 py-1.5 bg-primary-500/20 hover:bg-primary-500/40 border border-primary-500/30 text-primary-200 rounded-xl text-sm font-medium transition-colors">
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  value={questionAnswer}
+                  onChange={e => setQuestionAnswer(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && questionAnswer && handleAnswerQuestion()}
+                  placeholder="Type your answer..."
+                  className="flex-1 bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-primary-500 outline-none focus:border-primary-400"
+                  autoFocus
+                />
+                <button onClick={() => handleAnswerQuestion()} disabled={!questionAnswer}
+                  className="btn-primary px-4 py-2 text-sm rounded-xl disabled:opacity-40">
+                  Send
+                </button>
+                <button onClick={() => handleAnswerQuestion('Skip this, use your best judgment')}
+                  className="text-xs text-primary-400 hover:text-primary-200 px-3 transition-colors">
+                  Skip
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
