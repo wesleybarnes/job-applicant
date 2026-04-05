@@ -27,6 +27,7 @@ class UserProfileCreate(BaseModel):
     summary: Optional[str] = None
     availability: Optional[str] = None
     custom_answers: Optional[dict] = {}
+    auto_apply: Optional[bool] = False
 
 
 class UserProfileUpdate(UserProfileCreate):

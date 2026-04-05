@@ -15,6 +15,7 @@ class UserProfile(Base):
     linkedin_url = Column(String(500))
     github_url = Column(String(500))
     portfolio_url = Column(String(500))
+    auto_apply = Column(Boolean, default=False)  # skip confirmation before submitting
 
     # Questionnaire responses
     target_roles = Column(JSON)          # list of job titles
