@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Monitor, Square, CheckCircle, XCircle, Loader2, Crosshair, Brain, ListChecks } from 'lucide-react'
 import HuntConfirmModal from './HuntConfirmModal'
-import api from '../api/client'
+import api, { SSE_BASE } from '../api/client'
 
 export default function HuntView({ huntId, onClose }) {
   const [screenshot, setScreenshot] = useState(null)
@@ -15,7 +15,7 @@ export default function HuntView({ huntId, onClose }) {
   const logRef = useRef(null)
 
   useEffect(() => {
-    const es = new EventSource(`/api/hunt/stream/${huntId}`)
+    const es = new EventSource(`${SSE_BASE}/hunt/stream/${huntId}`)
     es.onmessage = (e) => {
       if (e.data === '[DONE]') { es.close(); return }
       try { handleEvent(JSON.parse(e.data)) } catch {}

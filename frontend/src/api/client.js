@@ -6,6 +6,13 @@ const BASE = import.meta.env.VITE_API_URL
   ? `${import.meta.env.VITE_API_URL}/api`
   : '/api'
 
+// Full base URL for native browser APIs (EventSource, fetch) that
+// bypass the Vite proxy in dev and need a full URL in production.
+// EventSource can't set headers, so stream endpoints must be public.
+export const SSE_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api'
+
 const api = axios.create({
   baseURL: BASE,
   headers: { 'Content-Type': 'application/json' },

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Monitor, Loader2, CheckCircle, XCircle } from 'lucide-react'
 import ConfirmModal from './ConfirmModal'
-import api from '../api/client'
+import api, { SSE_BASE } from '../api/client'
 
 export default function BrowserView({ applicationId, onClose }) {
   const [screenshot, setScreenshot] = useState(null)
@@ -12,7 +12,7 @@ export default function BrowserView({ applicationId, onClose }) {
   const logRef = useRef(null)
 
   useEffect(() => {
-    const es = new EventSource(`/api/browser/stream/${applicationId}`)
+    const es = new EventSource(`${SSE_BASE}/browser/stream/${applicationId}`)
     es.onmessage = (e) => {
       if (e.data === '[DONE]') { es.close(); return }
       try { handleEvent(JSON.parse(e.data)) } catch {}
