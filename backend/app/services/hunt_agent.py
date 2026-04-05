@@ -649,7 +649,6 @@ Start now — search for "{roles}" in "{locations}".
                 response = await self.client.messages.create(
                     model="claude-opus-4-6",
                     max_tokens=8192,
-                    thinking={"type": "adaptive"},
                     system=HUNT_SYSTEM_PROMPT,
                     tools=tools,
                     messages=messages,
