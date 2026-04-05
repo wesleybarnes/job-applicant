@@ -25,14 +25,29 @@ function AuthedApp() {
   }, [getToken])
 
   // Fetch/create backend user whenever Clerk auth is ready
+  // Retries with backoff because getToken() returns null briefly after redirect
   useEffect(() => {
     if (!isLoaded) return
     if (!isSignedIn) { setLoading(false); return }
 
-    getMe()
-      .then(u => setAppUser(u))
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    let cancelled = false
+    const fetchUser = async () => {
+      for (let i = 0; i < 5; i++) {
+        if (cancelled) return
+        try {
+          const token = await getToken()
+          if (!token) { await new Promise(r => setTimeout(r, 600)); continue }
+          const u = await getMe()
+          if (!cancelled) setAppUser(u)
+          return
+        } catch (e) {
+          if (i === 4) console.error('getMe failed after retries:', e)
+          await new Promise(r => setTimeout(r, 600))
+        }
+      }
+    }
+    fetchUser().finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [isLoaded, isSignedIn])
 
   const refreshUser = async () => {
