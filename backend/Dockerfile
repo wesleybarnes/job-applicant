@@ -1,13 +1,13 @@
-# Official Playwright image — Python 3.11 + Chromium pre-installed on Ubuntu Jammy
 FROM mcr.microsoft.com/playwright/python:v1.47.0-jammy
+
+# Clear any ENTRYPOINT from the base image
+ENTRYPOINT []
 
 WORKDIR /app
 
-# Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
 COPY . .
 
 EXPOSE 8000
