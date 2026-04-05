@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, FileText, Bot, TrendingUp, ArrowRight, Upload, CheckCircle } from 'lucide-react'
-import { listApplications, listJobs, getResumes } from '../api/client'
+import { Briefcase, FileText, Bot, TrendingUp, ArrowRight, Upload, CheckCircle, X } from 'lucide-react'
+import { listApplications, listJobs, getResumes, uploadResume, deleteResume } from '../api/client'
 import { useAppUser } from '../App'
 
 const STATUS_COLORS = {
@@ -22,27 +22,52 @@ export default function DashboardPage() {
   const [jobs, setJobs] = useState([])
   const [resumes, setResumes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState(null)
+  const fileInputRef = useRef()
 
-  useEffect(() => {
+  const load = async () => {
     if (!user) return
-    const load = async () => {
-      try {
-        const [apps, j, r] = await Promise.all([
-          listApplications(user.id),
-          listJobs({ limit: 5 }),
-          getResumes(user.id),
-        ])
-        setApplications(apps)
-        setJobs(j)
-        setResumes(r)
-      } catch (e) {
-        console.error(e)
-      } finally {
-        setLoading(false)
-      }
+    try {
+      const [apps, j, r] = await Promise.all([
+        listApplications(user.id),
+        listJobs({ limit: 5 }),
+        getResumes(user.id),
+      ])
+      setApplications(apps)
+      setJobs(j)
+      setResumes(r)
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [user?.id])
+  }
+
+  useEffect(() => { load() }, [user?.id])
+
+  const handleUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    setUploadError(null)
+    try {
+      await uploadResume(user.id, file)
+      await load()
+    } catch (err) {
+      setUploadError(err.response?.data?.detail || 'Upload failed. Try again.')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  const handleDelete = async (resumeId) => {
+    try {
+      await deleteResume(resumeId)
+      setResumes(prev => prev.filter(r => r.id !== resumeId))
+    } catch {}
+  }
 
   if (loading) {
     return (
@@ -69,21 +94,61 @@ export default function DashboardPage() {
         <p className="text-gray-500 mt-1">Your job search is in good hands.</p>
       </div>
 
-      {/* Resume alert */}
-      {resumes.length === 0 && (
-        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Upload className="w-5 h-5 text-amber-600" />
-            <div>
-              <p className="font-medium text-amber-800 text-sm">No resume uploaded yet</p>
-              <p className="text-xs text-amber-600">Upload your resume so the AI can write better cover letters.</p>
-            </div>
-          </div>
-          <button className="btn-primary text-sm py-1.5" onClick={() => navigate('/dashboard')}>
-            Upload Now
+      {/* Resume section */}
+      <div className="card mb-8">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary-600" /> Resume
+          </h2>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="btn-primary text-sm py-1.5 flex items-center gap-2"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            {uploading ? 'Uploading...' : 'Upload Resume'}
           </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.doc,.txt"
+            className="hidden"
+            onChange={handleUpload}
+          />
         </div>
-      )}
+
+        {uploadError && (
+          <p className="text-sm text-red-600 mb-3">{uploadError}</p>
+        )}
+
+        {resumes.length === 0 ? (
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-primary-400 hover:bg-primary-50 transition-colors"
+          >
+            <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+            <p className="text-sm font-medium text-gray-600">No resume uploaded yet</p>
+            <p className="text-xs text-gray-400 mt-1">Click to upload PDF, DOCX, or TXT · Max 10MB</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {resumes.map(r => (
+              <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileText className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{r.filename}</p>
+                    <p className="text-xs text-gray-500">{new Date(r.created_at).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <button onClick={() => handleDelete(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors flex-shrink-0">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
