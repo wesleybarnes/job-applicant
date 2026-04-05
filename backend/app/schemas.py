@@ -37,6 +37,9 @@ class UserProfileUpdate(UserProfileCreate):
 
 class UserProfileResponse(UserProfileCreate):
     id: int
+    is_admin: Optional[bool] = False
+    credits: Optional[int] = 0
+    onboarding_complete: Optional[bool] = False
     created_at: datetime
     updated_at: Optional[datetime] = None
 

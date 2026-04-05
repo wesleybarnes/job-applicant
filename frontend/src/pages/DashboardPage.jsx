@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Briefcase, FileText, Bot, TrendingUp, ArrowRight, Upload, CheckCircle } from 'lucide-react'
-import { getUser, listApplications, listJobs, getResumes } from '../api/client'
+import { listApplications, listJobs, getResumes } from '../api/client'
+import { useAppUser } from '../App'
 
 const STATUS_COLORS = {
   pending: 'bg-yellow-100 text-yellow-700',
@@ -14,24 +15,23 @@ const STATUS_COLORS = {
   offer: 'bg-emerald-100 text-emerald-700',
 }
 
-export default function DashboardPage({ userId }) {
+export default function DashboardPage() {
   const navigate = useNavigate()
-  const [user, setUser] = useState(null)
+  const { appUser: user } = useAppUser()
   const [applications, setApplications] = useState([])
   const [jobs, setJobs] = useState([])
   const [resumes, setResumes] = useState([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!user) return
     const load = async () => {
       try {
-        const [u, apps, j, r] = await Promise.all([
-          getUser(userId),
-          listApplications(userId),
+        const [apps, j, r] = await Promise.all([
+          listApplications(user.id),
           listJobs({ limit: 5 }),
-          getResumes(userId),
+          getResumes(user.id),
         ])
-        setUser(u)
         setApplications(apps)
         setJobs(j)
         setResumes(r)
@@ -42,7 +42,7 @@ export default function DashboardPage({ userId }) {
       }
     }
     load()
-  }, [userId])
+  }, [user?.id])
 
   if (loading) {
     return (

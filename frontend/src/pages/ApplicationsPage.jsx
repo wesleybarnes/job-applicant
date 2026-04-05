@@ -159,7 +159,9 @@ function ApplicationCard({ app, autoApply, onRunAgent, onRunBrowser, onStatusCha
   )
 }
 
-export default function ApplicationsPage({ userId }) {
+export default function ApplicationsPage() {
+  const { appUser } = useAppUser()
+  const userId = appUser?.id
   const [applications, setApplications] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')

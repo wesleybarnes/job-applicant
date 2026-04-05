@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { Search, MapPin, DollarSign, Wifi, Plus, Trash2, Loader2, Building2 } from 'lucide-react'
+import { Search, MapPin, DollarSign, Plus, Trash2, Loader2, Building2 } from 'lucide-react'
 import { listJobs, searchJobs, createApplication, deleteJob } from '../api/client'
+import { useAppUser } from '../App'
 
-export default function JobsPage({ userId }) {
+export default function JobsPage() {
+  const { appUser } = useAppUser()
+  const userId = appUser?.id
   const [jobs, setJobs] = useState([])
   const [loading, setLoading] = useState(false)
   const [searching, setSearching] = useState(false)

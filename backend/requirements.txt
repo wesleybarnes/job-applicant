@@ -12,3 +12,5 @@ python-docx==1.1.2
 aiofiles==24.1.0
 python-dotenv==1.0.1
 playwright==1.47.0
+python-jose[cryptography]==3.3.0
+stripe==10.12.0

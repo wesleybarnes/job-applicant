@@ -6,6 +6,8 @@ import json
 from app.database import get_db
 from app import models, schemas
 from app.agents.job_application_agent import JobApplicationAgent
+from app.auth import get_current_user, require_credits, deduct_credits
+from app.config import CREDITS_AI_APPLY
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -62,8 +64,12 @@ def update_application(
 
 
 @router.post("/run-agent", response_model=schemas.AgentRunResponse)
-async def run_agent(request: schemas.AgentRunRequest, db: Session = Depends(get_db)):
-    """Run the AI agent to process a job application."""
+async def run_agent(
+    request: schemas.AgentRunRequest,
+    current_user: models.UserProfile = Depends(require_credits(CREDITS_AI_APPLY)),
+    db: Session = Depends(get_db),
+):
+    """Run the AI agent to process a job application. Costs 1 credit."""
     app = db.query(models.Application).filter(models.Application.id == request.application_id).first()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
@@ -80,6 +86,9 @@ async def run_agent(request: schemas.AgentRunRequest, db: Session = Depends(get_
 
     app.status = "in_progress"
     db.commit()
+
+    # Deduct credit after confirming everything is in order
+    deduct_credits(current_user, CREDITS_AI_APPLY, db)
 
     agent = JobApplicationAgent()
     result = await agent.run(

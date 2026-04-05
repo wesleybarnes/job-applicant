@@ -8,14 +8,18 @@ class UserProfile(Base):
     __tablename__ = "user_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String(200), nullable=False)
+    clerk_user_id = Column(String(200), unique=True, index=True, nullable=True)
+    full_name = Column(String(200), nullable=True)   # nullable until onboarding complete
     email = Column(String(200), unique=True, index=True, nullable=False)
     phone = Column(String(50))
     location = Column(String(200))
     linkedin_url = Column(String(500))
     github_url = Column(String(500))
     portfolio_url = Column(String(500))
-    auto_apply = Column(Boolean, default=False)  # skip confirmation before submitting
+    auto_apply = Column(Boolean, default=False)
+    is_admin = Column(Boolean, default=False)
+    credits = Column(Integer, default=5)      # free credits on signup
+    onboarding_complete = Column(Boolean, default=False)
 
     # Questionnaire responses
     target_roles = Column(JSON)          # list of job titles
