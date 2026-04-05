@@ -76,13 +76,19 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
         salary_min: form.salary_min ? parseInt(form.salary_min) : null,
         salary_max: form.salary_max ? parseInt(form.salary_max) : null,
         years_experience: form.years_experience ? parseInt(form.years_experience) : null,
-        remote_preference: form.remote_preference.toLowerCase().replace('-', ''),
+        remote_preference: form.remote_preference.toLowerCase().replace(/[- ]/g, ''),
       }
       const user = await onboardMe(userData)
       if (resumeFile) await uploadResume(user.id, resumeFile)
       await onComplete()  // refreshes appUser → triggers redirect to /dashboard
     } catch (e) {
-      setError(e.response?.data?.detail || 'Something went wrong.')
+      const detail = e.response?.data?.detail
+      if (Array.isArray(detail)) {
+        setError(detail.map(d => `${d.loc?.join('.')}: ${d.msg}`).join(' · '))
+      } else {
+        setError(detail || e.message || 'Something went wrong.')
+      }
+      console.error('Onboarding error:', e.response?.data || e)
     } finally {
       setLoading(false)
     }
