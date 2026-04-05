@@ -66,4 +66,8 @@ export const runAgent = (data) => api.post('/applications/run-agent', data).then
 export const listPacks = () => api.get('/payments/packs').then(r => r.data)
 export const createCheckout = (packId) => api.post(`/payments/checkout/${packId}`).then(r => r.data)
 
+// ─── Hunt ─────────────────────────────────────────────────────────────────────
+export const startHunt = () => api.post('/hunt/start').then(r => r.data)
+export const listHuntSessions = () => api.get('/hunt/sessions').then(r => r.data)
+
 export default api

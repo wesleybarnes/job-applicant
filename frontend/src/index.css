@@ -1,44 +1,105 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Sora:wght@700;800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 font-sans;
+    @apply bg-gray-50 text-gray-900;
+    font-family: 'Inter', system-ui, sans-serif;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-primary-600 text-white px-4 py-2 rounded-lg font-medium
-           hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed
+    @apply bg-gradient-to-r from-primary-600 to-primary-700 text-white
+           px-4 py-2 rounded-xl font-semibold
+           shadow-md shadow-primary-900/20
+           hover:from-primary-700 hover:to-primary-800
+           focus:outline-none focus:ring-2 focus:ring-gold-400 focus:ring-offset-2
+           disabled:opacity-40 disabled:cursor-not-allowed
+           transition-all duration-150;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-primary-700 px-4 py-2 rounded-xl font-medium
+           border border-primary-200
+           hover:bg-primary-50 hover:border-primary-400
+           focus:outline-none focus:ring-2 focus:ring-primary-400 focus:ring-offset-1
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-150;
+  }
+
+  .btn-gold {
+    @apply bg-gradient-to-r from-gold-500 to-gold-600 text-white
+           px-6 py-3 rounded-2xl font-bold
+           hover:from-gold-600 hover:to-gold-700
+           focus:outline-none focus:ring-2 focus:ring-gold-300 focus:ring-offset-2
+           disabled:opacity-40 disabled:cursor-not-allowed
+           transition-all duration-150;
+    box-shadow: 0 4px 20px rgba(245,158,11,0.3);
+  }
+
+  .btn-danger {
+    @apply bg-red-600 text-white px-4 py-2 rounded-xl font-semibold
+           hover:bg-red-700
+           focus:outline-none focus:ring-2 focus:ring-red-400 focus:ring-offset-2
+           disabled:opacity-40 disabled:cursor-not-allowed
+           transition-all duration-150;
+  }
+
+  .card {
+    @apply bg-white rounded-2xl border border-primary-100/60 p-6
+           transition-shadow duration-200;
+    box-shadow: 0 0 0 1px rgba(124,58,237,0.08), 0 4px 20px rgba(124,58,237,0.06);
+  }
+  .card:hover {
+    box-shadow: 0 0 0 1px rgba(124,58,237,0.15), 0 8px 40px rgba(124,58,237,0.12);
+  }
+
+  .input {
+    @apply w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-300
+           placeholder:text-gray-400
            transition-colors duration-150;
   }
-  .btn-secondary {
-    @apply bg-white text-gray-700 px-4 py-2 rounded-lg font-medium border border-gray-300
-           hover:bg-gray-50 disabled:opacity-50 transition-colors duration-150;
-  }
-  .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
-  }
-  .input {
-    @apply w-full rounded-lg border border-gray-300 px-3 py-2 text-sm
-           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-           placeholder:text-gray-400;
-  }
+
   .label {
-    @apply block text-sm font-medium text-gray-700 mb-1;
+    @apply block text-sm font-semibold text-gray-700 mb-1;
   }
+
   .badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full
+           text-xs font-semibold tracking-wide;
   }
 }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: #f1f5f9; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #7c3aed; border-radius: 3px; }
 
-/* Typing animation for agent */
+/* Animations */
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .cursor-blink { animation: blink 1s step-end infinite; }
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.text-shimmer {
+  background: linear-gradient(90deg, #f59e0b 0%, #fde68a 40%, #f59e0b 100%);
+  background-size: 200% auto;
+  animation: shimmer 2.5s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.hero-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(124,58,237,0.5) 0%, transparent 70%);
+  pointer-events: none;
+}

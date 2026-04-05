@@ -1,53 +1,66 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Sparkles, Upload, Bot, BarChart3, CheckCircle, ArrowRight, Monitor } from 'lucide-react'
+import { ArrowRight, Monitor, Upload, Sparkles, CheckCircle, Crosshair } from 'lucide-react'
 
 const FEATURES = [
   {
-    icon: Upload,
-    title: 'Upload Your Resume',
-    desc: 'PDF or Word — we parse and understand your full work history automatically.',
+    icon: Crosshair,
+    title: 'Autonomous Hunt',
+    desc: 'One click. The AI browses LinkedIn and Indeed, finds matching jobs, and applies — while you watch live.',
+    accent: 'from-gold-500 to-gold-600',
   },
   {
-    icon: Bot,
-    title: 'AI Writes Cover Letters',
-    desc: 'Claude Opus analyzes each job and crafts a unique, compelling cover letter.',
+    icon: Upload,
+    title: 'Resume-Powered',
+    desc: 'Upload your resume once. Claude reads every word and uses it to fill applications perfectly.',
+    accent: 'from-primary-500 to-primary-600',
   },
   {
     icon: Monitor,
-    title: 'Watch It Apply Live',
-    desc: 'Envia controls the browser so you can watch every click. Confirm before each submit.',
+    title: 'Watch It Happen',
+    desc: 'Live browser stream so you see every click, every field, every page the AI visits in real time.',
+    accent: 'from-emerald-500 to-emerald-600',
   },
   {
     icon: CheckCircle,
-    title: 'Track Everything',
-    desc: 'One dashboard for all your applications, statuses, and next steps.',
+    title: 'You Confirm, It Submits',
+    desc: 'The AI pauses before every submit. You review, then approve or skip. Full control, zero effort.',
+    accent: 'from-violet-500 to-violet-600',
   },
 ]
+
+function EnviaLogo() {
+  return (
+    <svg width="36" height="36" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="16,2 28,9 28,23 16,30 4,23 4,9" fill="rgba(255,255,255,0.2)"/>
+      <polygon points="20,9 13,15.5 17,15.5 12,23 19,16.5 15,16.5" fill="#f59e0b"/>
+    </svg>
+  )
+}
 
 export default function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-700 to-indigo-800 text-white">
+    <div className="min-h-screen text-white" style={{ background: 'linear-gradient(135deg, #120630 0%, #3b0764 50%, #1e0a4a 100%)' }}>
+      <div className="hero-glow" />
+
       {/* Nav */}
-      <nav className="flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold text-xl">Envia</span>
+      <nav className="relative flex items-center justify-between px-8 py-5 max-w-7xl mx-auto">
+        <div className="flex items-center gap-3">
+          <EnviaLogo />
+          <span className="font-display font-bold text-xl tracking-tight">Envia</span>
         </div>
         <div className="flex items-center gap-3">
           <button
             onClick={() => navigate('/sign-in')}
-            className="text-white/80 hover:text-white text-sm font-medium transition-colors"
+            className="text-primary-200 hover:text-white text-sm font-medium transition-colors px-4 py-2"
           >
             Sign In
           </button>
           <button
             onClick={() => navigate('/sign-up')}
-            className="bg-white text-primary-700 px-5 py-2 rounded-lg font-semibold text-sm hover:bg-primary-50 transition-colors"
+            className="btn-gold text-sm px-5 py-2"
           >
             Get Started Free
           </button>
@@ -55,54 +68,62 @@ export default function LandingPage() {
       </nav>
 
       {/* Hero */}
-      <div className="max-w-5xl mx-auto px-8 pt-24 pb-20 text-center">
-        <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur px-4 py-1.5 rounded-full text-sm mb-6 border border-white/20">
-          <Sparkles className="w-3.5 h-3.5" />
-          Powered by Claude Opus 4.6
+      <div className="relative max-w-5xl mx-auto px-8 pt-20 pb-16 text-center">
+        <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm px-4 py-1.5 rounded-full text-sm mb-8 border border-white/20">
+          <Sparkles className="w-3.5 h-3.5 text-gold-400" />
+          <span>Powered by Claude Opus 4.6 · Autonomous browser AI</span>
         </div>
-        <h1 className="text-5xl md:text-6xl font-extrabold leading-tight mb-6">
-          Let AI apply to jobs
+
+        <h1 className="font-display text-6xl md:text-7xl font-extrabold leading-tight mb-6">
+          AI that hunts jobs
           <br />
-          <span className="text-indigo-200">while you sleep</span>
+          <span className="text-shimmer">and applies for you</span>
         </h1>
-        <p className="text-xl text-indigo-100 max-w-2xl mx-auto mb-10">
-          Upload your resume, answer a quick survey, and let Envia hunt for
-          jobs, score your fit, write cover letters, and apply — automatically.
+
+        <p className="text-xl text-primary-200 max-w-2xl mx-auto mb-10 leading-relaxed">
+          Upload your resume. Set your targets. Watch Envia browse LinkedIn,
+          find matching jobs, fill applications, and wait for your approval before
+          every submit — all in real time.
         </p>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center mb-6">
           <button
             onClick={() => navigate('/sign-up')}
-            className="flex items-center justify-center gap-2 bg-white text-primary-700 px-8 py-3.5 rounded-xl font-bold text-base hover:bg-indigo-50 transition-colors shadow-lg"
+            className="btn-gold flex items-center justify-center gap-2 text-base"
           >
-            Start Applying Free <ArrowRight className="w-4 h-4" />
+            Start Hunting Free <ArrowRight className="w-4 h-4" />
           </button>
           <button
             onClick={() => navigate('/sign-in')}
-            className="flex items-center justify-center gap-2 bg-white/10 border border-white/30 backdrop-blur text-white px-8 py-3.5 rounded-xl font-bold text-base hover:bg-white/20 transition-colors"
+            className="flex items-center justify-center gap-2 bg-white/10 border border-white/25 backdrop-blur-sm text-white px-8 py-3 rounded-2xl font-semibold text-base hover:bg-white/20 transition-colors"
           >
             Sign In
           </button>
         </div>
-        <p className="text-indigo-300 text-sm mt-4">5 free credits on signup · No credit card required</p>
+        <p className="text-primary-300 text-sm">5 free credits on signup · No credit card required</p>
       </div>
 
       {/* Features */}
-      <div className="max-w-5xl mx-auto px-8 pb-24">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {FEATURES.map(({ icon: Icon, title, desc }) => (
-            <div key={title} className="bg-white/10 backdrop-blur rounded-xl p-6 border border-white/20">
-              <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center mb-4">
+      <div className="relative max-w-5xl mx-auto px-8 pb-24">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {FEATURES.map(({ icon: Icon, title, desc, accent }) => (
+            <div
+              key={title}
+              className="rounded-2xl p-6 border border-white/15 backdrop-blur-sm transition-all duration-200 hover:border-white/25 hover:bg-white/8"
+              style={{ background: 'rgba(255,255,255,0.06)' }}
+            >
+              <div className={`w-11 h-11 bg-gradient-to-br ${accent} rounded-xl flex items-center justify-center mb-4`}>
                 <Icon className="w-5 h-5 text-white" />
               </div>
-              <h3 className="font-semibold text-lg mb-2">{title}</h3>
-              <p className="text-indigo-200 text-sm leading-relaxed">{desc}</p>
+              <h3 className="font-display font-bold text-lg mb-2">{title}</h3>
+              <p className="text-primary-200 text-sm leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
       </div>
 
       {/* Footer */}
-      <div className="text-center pb-8 text-indigo-300 text-sm">
+      <div className="relative text-center pb-8 text-primary-400 text-sm border-t border-white/10 pt-6">
         © 2026 Envia · Built with Claude Opus 4.6 · FastAPI · React
       </div>
     </div>

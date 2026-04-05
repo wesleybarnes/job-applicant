@@ -42,6 +42,7 @@ class UserProfile(Base):
 
     resumes = relationship("Resume", back_populates="user")
     applications = relationship("Application", back_populates="user")
+    hunt_sessions = relationship("HuntSession", back_populates="user")
 
 
 class Resume(Base):
@@ -106,3 +107,18 @@ class Application(Base):
 
     user = relationship("UserProfile", back_populates="applications")
     job = relationship("Job", back_populates="applications")
+
+
+class HuntSession(Base):
+    __tablename__ = "hunt_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user_profiles.id"), nullable=False)
+    status = Column(String(50), default="running")  # running / stopped / complete
+    jobs_found = Column(Integer, default=0)
+    jobs_applied = Column(Integer, default=0)
+    started_at = Column(DateTime(timezone=True), server_default=func.now())
+    stopped_at = Column(DateTime(timezone=True), nullable=True)
+    log = Column(JSON, default=list)
+
+    user = relationship("UserProfile", back_populates="hunt_sessions")

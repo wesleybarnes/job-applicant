@@ -1,29 +1,29 @@
 import React from 'react'
-import { CheckCircle, XCircle, AlertTriangle } from 'lucide-react'
+import { CheckCircle, SkipForward, Square, AlertTriangle } from 'lucide-react'
 
-export default function ConfirmModal({ data, screenshot, onConfirm, onCancel }) {
-  const { summary, fields_filled = [], concerns = [] } = data
+export default function HuntConfirmModal({ data, screenshot, huntId, onConfirm, onSkip, onStop }) {
+  const { job_title, company, summary, fields_filled = [], concerns = [] } = data
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(18,6,48,0.85)', backdropFilter: 'blur(8px)' }}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" style={{ background: 'rgba(18,6,48,0.88)', backdropFilter: 'blur(8px)' }}>
       <div className="rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden border border-primary-700/50" style={{ background: '#1a1230' }}>
 
         {/* Header */}
-        <div className="px-6 py-4 border-b border-white/10 flex items-center gap-3"
+        <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between"
           style={{ background: 'linear-gradient(135deg, #3b0764, #1e0a4a)' }}>
-          <div className="w-9 h-9 bg-gold-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
-            <CheckCircle className="w-5 h-5 text-gold-400" />
-          </div>
           <div>
             <h2 className="font-bold text-white text-lg">Ready to Submit</h2>
-            <p className="text-sm text-primary-300">Review before the AI clicks submit</p>
+            <p className="text-sm text-primary-300">{job_title} at {company}</p>
+          </div>
+          <div className="w-10 h-10 bg-gold-500/20 rounded-xl flex items-center justify-center">
+            <CheckCircle className="w-5 h-5 text-gold-400" />
           </div>
         </div>
 
-        <div className="p-6 space-y-5 max-h-[60vh] overflow-y-auto">
+        <div className="p-6 space-y-4 max-h-[55vh] overflow-y-auto">
           {screenshot && (
             <div className="rounded-xl overflow-hidden border border-white/10 bg-black">
-              <img src={`data:image/png;base64,${screenshot}`} alt="Application state" className="w-full object-contain max-h-52" />
+              <img src={`data:image/png;base64,${screenshot}`} alt="Application state" className="w-full object-contain max-h-48" />
             </div>
           )}
 
@@ -56,12 +56,16 @@ export default function ConfirmModal({ data, screenshot, onConfirm, onCancel }) 
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-white/10 flex items-center justify-between" style={{ background: 'rgba(0,0,0,0.2)' }}>
-          <button onClick={onCancel} className="btn-danger flex items-center gap-2">
-            <XCircle className="w-4 h-4" /> Don't Submit
+        {/* Three actions */}
+        <div className="px-6 py-4 border-t border-white/10 grid grid-cols-3 gap-3" style={{ background: 'rgba(0,0,0,0.2)' }}>
+          <button onClick={onStop} className="flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-700 text-white py-2.5 px-3 rounded-xl font-semibold text-sm transition-colors">
+            <Square className="w-3.5 h-3.5" /> Stop Hunt
           </button>
-          <button onClick={onConfirm} className="btn-gold flex items-center gap-2 text-sm py-2 px-5">
-            <CheckCircle className="w-4 h-4" /> Yes, Submit Application
+          <button onClick={onSkip} className="flex items-center justify-center gap-1.5 bg-white/10 hover:bg-white/15 text-primary-200 py-2.5 px-3 rounded-xl font-semibold text-sm border border-white/15 transition-colors">
+            <SkipForward className="w-3.5 h-3.5" /> Skip Job
+          </button>
+          <button onClick={onConfirm} className="btn-gold flex items-center justify-center gap-1.5 text-sm py-2.5 px-3">
+            <CheckCircle className="w-3.5 h-3.5" /> Submit
           </button>
         </div>
       </div>

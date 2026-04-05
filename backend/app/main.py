@@ -5,7 +5,7 @@ import os
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import users, resume, jobs, applications, browser, payments
+from app.routers import users, resume, jobs, applications, browser, payments, hunt
 from app import models  # noqa — ensure models are registered before create_all
 
 # Create all DB tables
@@ -40,6 +40,7 @@ app.include_router(jobs.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(browser.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
+app.include_router(hunt.router, prefix="/api")
 
 # Serve uploaded files
 os.makedirs(settings.upload_dir, exist_ok=True)

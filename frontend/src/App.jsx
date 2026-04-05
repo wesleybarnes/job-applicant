@@ -7,6 +7,7 @@ import OnboardingPage from './pages/OnboardingPage'
 import DashboardPage from './pages/DashboardPage'
 import JobsPage from './pages/JobsPage'
 import ApplicationsPage from './pages/ApplicationsPage'
+import HuntPage from './pages/HuntPage'
 import Layout from './components/Layout'
 
 export const AppUserContext = createContext(null)
@@ -109,6 +110,7 @@ function InnerApp() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/jobs" element={<JobsPage />} />
           <Route path="/applications" element={<ApplicationsPage />} />
+          <Route path="/hunt" element={<HuntPage />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

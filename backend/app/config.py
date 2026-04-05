@@ -41,6 +41,7 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Credit costs per action
-CREDITS_AI_APPLY = 1      # generate cover letter + analysis
-CREDITS_BROWSER_APPLY = 3  # full browser form filling + submit
+CREDITS_AI_APPLY = 1        # generate cover letter + analysis
+CREDITS_BROWSER_APPLY = 3   # full browser form filling + submit
+CREDITS_HUNT_SESSION = 5    # full autonomous job hunt
 FREE_CREDITS_ON_SIGNUP = 5  # everyone starts with 5 free credits
