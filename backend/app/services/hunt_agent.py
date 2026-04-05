@@ -11,7 +11,7 @@ from app.config import settings
 # ─── In-memory session ──────────────────────────────────────────────────────
 
 class HuntSession:
-    def __init__(self, hunt_id: int, user_id: int):
+    def __init__(self, hunt_id: int, user_id: int, seen_urls: set = None, auto_apply: bool = False):
         self.hunt_id = hunt_id
         self.user_id = user_id
         self.events: asyncio.Queue = asyncio.Queue()
@@ -28,6 +28,8 @@ class HuntSession:
         self.jobs_applied = 0
         self.cursor_x: Optional[int] = None
         self.cursor_y: Optional[int] = None
+        self.seen_urls: set = seen_urls or set()  # URLs seen across all hunts
+        self.auto_apply: bool = auto_apply
 
     def emit(self, event: dict):
         self.events.put_nowait(event)
@@ -84,8 +86,8 @@ def get_hunt_session(hunt_id: int) -> Optional[HuntSession]:
     return _hunt_sessions.get(hunt_id)
 
 
-def create_hunt_session(hunt_id: int, user_id: int) -> HuntSession:
-    session = HuntSession(hunt_id, user_id)
+def create_hunt_session(hunt_id: int, user_id: int, seen_urls: set = None, auto_apply: bool = False) -> HuntSession:
+    session = HuntSession(hunt_id, user_id, seen_urls=seen_urls, auto_apply=auto_apply)
     _hunt_sessions[hunt_id] = session
     return session
 
@@ -617,6 +619,18 @@ START NOW. {"Login to LinkedIn first, then search." if user.get('linkedin_email'
                     title = inp["title"]
                     company = inp["company"]
                     score = inp.get("match_score", 0)
+                    url = inp.get("url", "")
+
+                    # Skip if already evaluated in a previous hunt
+                    if url and url in session.seen_urls:
+                        session.emit({"type": "action", "message": f"↷ Already seen: {title} at {company}"})
+                        return f"skip (already seen): {title} at {company}"
+
+                    # Track this URL so it won't be evaluated again
+                    if url:
+                        session.seen_urls.add(url)
+                        _persist_seen_url(session, url, db_session_factory)
+
                     if decision == "apply":
                         session.jobs_found += 1
                     session.emit({
@@ -625,17 +639,25 @@ START NOW. {"Login to LinkedIn first, then search." if user.get('linkedin_email'
                         "title": title,
                         "company": company,
                         "location": inp.get("location", ""),
-                        "url": inp.get("url", ""),
+                        "url": url,
                         "match_score": score,
                         "reason": inp["reason"],
                     })
                     return f"{decision}: {title} at {company}"
 
                 elif name == "request_confirmation":
+                    job_title = inp.get("job_title", "")
+                    company = inp.get("company", "")
+
+                    # Auto-apply: skip the confirmation prompt and submit immediately
+                    if session.auto_apply:
+                        session.emit({"type": "action", "message": f"⚡ Auto-apply: submitting {job_title} at {company}..."})
+                        return "Auto-apply enabled. Proceed with submit_application."
+
                     session.emit({
                         "type": "confirm_required",
-                        "job_title": inp.get("job_title", ""),
-                        "company": inp.get("company", ""),
+                        "job_title": job_title,
+                        "company": company,
                         "summary": inp.get("summary", ""),
                         "fields_filled": inp.get("fields_filled", []),
                         "concerns": inp.get("concerns", []),
@@ -775,6 +797,23 @@ START NOW. {"Login to LinkedIn first, then search." if user.get('linkedin_email'
             _finalize_db(session, db_session_factory, "stopped")
 
         remove_hunt_session(session.hunt_id)
+
+
+def _persist_seen_url(session: HuntSession, url: str, factory):
+    """Append a URL to the hunt session's seen_job_urls list in the DB."""
+    try:
+        db = factory()
+        from app import models as m
+        hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
+        if hs:
+            existing = list(hs.seen_job_urls or [])
+            if url not in existing:
+                existing.append(url)
+                hs.seen_job_urls = existing
+                db.commit()
+        db.close()
+    except Exception:
+        pass
 
 
 def _persist_stats(session: HuntSession, factory):

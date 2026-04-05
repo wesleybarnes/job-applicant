@@ -120,5 +120,6 @@ class HuntSession(Base):
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     stopped_at = Column(DateTime(timezone=True), nullable=True)
     log = Column(JSON, default=list)
+    seen_job_urls = Column(JSON, default=list)  # URLs evaluated this session
 
     user = relationship("UserProfile", back_populates="hunt_sessions")

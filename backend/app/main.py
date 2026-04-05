@@ -11,6 +11,23 @@ from app import models  # noqa — ensure models are registered before create_al
 # Create all DB tables
 Base.metadata.create_all(bind=engine)
 
+# Add new columns that may not exist in older deployments
+def _run_migrations():
+    try:
+        with engine.connect() as conn:
+            # seen_job_urls column added in v1.1
+            try:
+                conn.execute(__import__("sqlalchemy").text(
+                    "ALTER TABLE hunt_sessions ADD COLUMN seen_job_urls JSON"
+                ))
+                conn.commit()
+            except Exception:
+                pass  # Column already exists
+    except Exception:
+        pass
+
+_run_migrations()
+
 app = FastAPI(
     title=settings.app_name,
     description="Agentic job application platform powered by Claude AI",

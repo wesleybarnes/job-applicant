@@ -60,17 +60,34 @@ async def start_hunt(
             detail="No resume found. Please upload your resume from the Dashboard before starting a hunt.",
         )
 
+    # Collect all URLs seen in past hunts for this user → no repeats
+    past_sessions = db.query(models.HuntSession).filter(
+        models.HuntSession.user_id == current_user.id,
+        models.HuntSession.status.in_(["complete", "stopped"]),
+    ).all()
+    seen_urls: set = set()
+    for ps in past_sessions:
+        for url in (ps.seen_job_urls or []):
+            if url:
+                seen_urls.add(url)
+
     hunt_db = models.HuntSession(
         user_id=current_user.id,
         status="running",
         jobs_found=0,
         jobs_applied=0,
+        seen_job_urls=[],
     )
     db.add(hunt_db)
     db.commit()
     db.refresh(hunt_db)
 
-    session = create_hunt_session(hunt_db.id, current_user.id)
+    session = create_hunt_session(
+        hunt_db.id,
+        current_user.id,
+        seen_urls=seen_urls,
+        auto_apply=bool(current_user.auto_apply),
+    )
 
     # Snapshot everything to plain dicts before DB session closes
     user_data = {
@@ -94,6 +111,7 @@ async def start_hunt(
         "salary_min": current_user.salary_min,
         "salary_max": current_user.salary_max,
         "custom_answers": current_user.custom_answers or {},
+        "auto_apply": current_user.auto_apply,
         # LinkedIn credentials for this session only (never persisted)
         "linkedin_email": body.linkedin_email,
         "linkedin_password": body.linkedin_password,
