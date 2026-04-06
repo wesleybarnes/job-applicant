@@ -16,7 +16,7 @@ export const useAppUser = () => useContext(AppUserContext)
 function Spinner() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="animate-spin w-7 h-7 border-[2.5px] border-surface-border border-t-ink-primary rounded-full" />
+      <div className="animate-spin w-8 h-8 border-[2.5px] border-brand-100 border-t-brand-500 rounded-full" />
     </div>
   )
 }

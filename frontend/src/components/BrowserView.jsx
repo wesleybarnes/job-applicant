@@ -57,21 +57,18 @@ export default function BrowserView({ applicationId, onClose }) {
     confirm:    { color: 'bg-amber-500/15 text-amber-400 border border-amber-500/20', label: 'Needs Review', spin: false },
     done:       { color: 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20', label: 'Done', spin: false },
     error:      { color: 'bg-red-500/15 text-red-400 border border-red-500/20', label: 'Error', spin: false },
-  }[status] || { color: 'bg-zinc-700 text-white', label: status, spin: false }
+  }[status] || { color: 'bg-white/10 text-white', label: status, spin: false }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' }}>
-      <div className="rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-zinc-700/50" style={{ background: '#0A0A0C' }}>
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-700/50" style={{ background: '#141417' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(16px)' }}>
+      <div className="rounded-3xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden border border-white/10" style={{ background: '#0c0a14' }}>
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10" style={{ background: 'rgba(139,92,246,0.06)' }}>
           <div className="flex items-center gap-3">
-            <Monitor className="w-4 h-4 text-zinc-400" />
-            <span className="font-semibold text-white text-sm">Live Browser — AI Applying</span>
-            <span className={`badge ${statusCfg.color} flex items-center gap-1`}>
-              {statusCfg.spin && <Loader2 className="w-3 h-3 animate-spin" />}
-              {statusCfg.label}
-            </span>
+            <Monitor className="w-4 h-4 text-brand-400" />
+            <span className="font-bold text-white text-sm">Live Browser — AI Applying</span>
+            <span className={`badge ${statusCfg.color} flex items-center gap-1`}>{statusCfg.spin && <Loader2 className="w-3 h-3 animate-spin" />}{statusCfg.label}</span>
           </div>
-          <button onClick={onClose} className="text-zinc-400 hover:text-white text-sm px-3 py-1.5 rounded-xl hover:bg-zinc-800 transition-colors">Close</button>
+          <button onClick={onClose} className="text-zinc-400 hover:text-white text-sm px-3 py-1.5 rounded-xl hover:bg-white/10 transition-colors">Close</button>
         </div>
 
         <div className="flex flex-1 overflow-hidden">
@@ -81,29 +78,22 @@ export default function BrowserView({ applicationId, onClose }) {
               : <div className="text-center text-zinc-500"><Monitor className="w-16 h-16 mx-auto mb-3 opacity-20" /><p className="text-sm">Waiting for browser...</p></div>
             }
             {finalMessage && (
-              <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.75)' }}>
-                <div className="rounded-2xl px-10 py-8 text-center border border-zinc-700/50" style={{ background: '#18181B' }}>
-                  {finalMessage.success
-                    ? <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                    : <XCircle className="w-12 h-12 text-zinc-500 mx-auto mb-3" />
-                  }
+              <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.8)' }}>
+                <div className="rounded-3xl px-10 py-8 text-center border border-white/10" style={{ background: 'linear-gradient(180deg, #1a1625, #12101c)' }}>
+                  {finalMessage.success ? <CheckCircle className="w-12 h-12 text-emerald-400 mx-auto mb-3" /> : <XCircle className="w-12 h-12 text-zinc-500 mx-auto mb-3" />}
                   <p className="font-bold text-white text-lg">{finalMessage.text}</p>
                 </div>
               </div>
             )}
           </div>
 
-          <div className="w-72 border-l border-zinc-700/50 flex flex-col" style={{ background: '#0E0E11' }}>
-            <div className="px-4 py-3 border-b border-zinc-700/50">
-              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Agent Log</p>
-            </div>
+          <div className="w-72 border-l border-white/10 flex flex-col" style={{ background: '#0a0812' }}>
+            <div className="px-4 py-3 border-b border-white/10"><p className="text-xs font-bold text-zinc-500 uppercase tracking-wider">Agent Log</p></div>
             <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-1.5 text-xs">
               {actions.length === 0
                 ? <p className="text-zinc-600 italic">Connecting...</p>
                 : actions.map(a => (
-                  <div key={a.id} className={`flex gap-2 items-start ${
-                    a.type === 'error' ? 'text-red-400' : a.type === 'submitted' ? 'text-emerald-400 font-semibold' : a.type === 'confirm_required' ? 'text-amber-400 font-semibold' : 'text-zinc-400'
-                  }`}>
+                  <div key={a.id} className={`flex gap-2 items-start ${a.type === 'error' ? 'text-red-400' : a.type === 'submitted' ? 'text-emerald-400 font-semibold' : a.type === 'confirm_required' ? 'text-amber-400 font-semibold' : 'text-zinc-400'}`}>
                     <span className="flex-shrink-0 mt-0.5">{a.type === 'error' ? '✗' : a.type === 'submitted' ? '✓' : a.type === 'confirm_required' ? '⏸' : '›'}</span>
                     <span>{a.text}</span>
                   </div>

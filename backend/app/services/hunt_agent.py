@@ -1,21 +1,20 @@
 """
-Hybrid Hunt Agent — Scripted Playwright + Selective Claude API calls.
+Visual Hunt Agent — Smooth, human-like browsing with AI-powered form filling.
 
 Architecture:
-  - Scripted Playwright handles 95% of work: navigation, clicks, form filling
-    from known user data. Zero AI cost for these.
-  - Claude Haiku 4.5 (cheap) for batch job evaluation and unknown form fields.
-  - Claude Opus 4.6 (expensive) only if user explicitly needs deep reasoning.
-  - Prompt caching on user profile → reused across all evaluations in a session.
+  - Playwright with slow_mo for visible, human-like browser interaction
+  - 5fps screenshot streaming for smooth real-time viewing
+  - Claude Haiku 4.5 for batch job scoring (cost-effective)
+  - Claude Opus 4.6 with tools for intelligent form filling (reliable)
+  - Human-like typing, cursor movement, and scrolling
+  - Target: 5+ applications in 5 minutes
 
-Cost estimate:
-  Old: Claude Opus for every action → $3-5 per 10-min session
-  New: Haiku batch eval + scripted fill → $0.10-0.30 per 10-min session
-  = ~15-30 applications per $1 of API spend
+Cost per hunt session: ~$0.50-1.50 (Haiku scoring + Opus form fill)
 """
 import asyncio
 import base64
 import json
+import os
 import re
 from typing import Optional
 import anthropic
@@ -106,18 +105,93 @@ def remove_hunt_session(hunt_id: int):
     _hunt_sessions.pop(hunt_id, None)
 
 
-# ─── Hybrid Agent ───────────────────────────────────────────────────────────
+# ─── Visual Hunt Agent ─────────────────────────────────────────────────────
+
+FORM_FILL_TOOLS = [
+    {
+        "name": "fill_field",
+        "description": "Fill a form input or textarea with a value. Use the label text or placeholder to identify the field.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "selector_hint": {"type": "string", "description": "The label text, placeholder, or aria-label of the field"},
+                "value": {"type": "string", "description": "The value to type into the field"},
+                "field_name": {"type": "string", "description": "Human-readable name like 'Email' or 'Years of experience'"},
+            },
+            "required": ["selector_hint", "value", "field_name"],
+        },
+    },
+    {
+        "name": "select_option",
+        "description": "Select an option from a dropdown/select element.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "selector_hint": {"type": "string", "description": "Label or aria-label of the dropdown"},
+                "option_text": {"type": "string", "description": "The visible text of the option to select"},
+            },
+            "required": ["selector_hint", "option_text"],
+        },
+    },
+    {
+        "name": "click_button",
+        "description": "Click a button on the page. Use for Next, Submit, radio buttons, checkboxes, etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "button_text": {"type": "string", "description": "The text or aria-label of the button"},
+                "reason": {"type": "string", "description": "Why clicking this button"},
+            },
+            "required": ["button_text"],
+        },
+    },
+    {
+        "name": "upload_resume",
+        "description": "Upload the candidate's resume file to a file input on the page.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "form_complete",
+        "description": "Call this when all visible fields on the current form page are filled and you're ready to proceed. Include a summary of what was filled.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "fields_filled": {"type": "array", "items": {"type": "string"}, "description": "List of field names that were filled"},
+                "next_action": {"type": "string", "enum": ["click_next", "click_submit", "done"], "description": "What to do next"},
+                "concerns": {"type": "array", "items": {"type": "string"}, "description": "Any issues or fields that couldn't be filled"},
+            },
+            "required": ["fields_filled", "next_action"],
+        },
+    },
+]
+
+FORM_FILL_SYSTEM = """You are filling out a job application form. You have the candidate's complete profile.
+Look at the form fields on the current page and fill each one using the candidate's data.
+
+Rules:
+- Fill EVERY visible empty field that you have data for
+- Use fill_field for text inputs and textareas
+- Use select_option for dropdowns
+- Use click_button for radio buttons, checkboxes, or navigation buttons
+- Use upload_resume if there's a file upload for resume/CV
+- NEVER fabricate information — only use what's in the candidate profile
+- When done with all fields on this page, call form_complete
+- For "years of experience" type fields, use the number from the profile
+- For salary fields, use the midpoint of the range
+- For "Why do you want this job?" use the candidate's custom answer or summary
+- Be efficient — fill all fields then call form_complete"""
+
 
 class HybridHuntAgent:
-    """
-    Scripted Playwright + Haiku for evaluation.
-    Opus is NOT used during hunts — it's overkill for browsing.
-    """
+    """Visual hunt agent: Haiku for scoring, Opus for form filling."""
 
     def __init__(self):
         self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 
-    # ── Cached user profile string (reused across all Haiku calls) ────────
+    # ── User profile text (cached across Haiku calls) ────────────────────
     def _profile_text(self, user: dict) -> str:
         roles     = ', '.join(user.get('target_roles') or []) or 'relevant tech roles'
         locations = ', '.join(user.get('target_locations') or []) or user.get('location') or 'Remote'
@@ -125,12 +199,14 @@ class HybridHuntAgent:
         salary    = ''
         if user.get('salary_min') or user.get('salary_max'):
             salary = f"${user.get('salary_min',0):,} – ${user.get('salary_max',0):,}"
-        return f"""
-Name: {user.get('full_name','')}
+        custom = json.dumps(user.get('custom_answers') or {}, indent=2)
+        return f"""Name: {user.get('full_name','')}
 Email: {user.get('email','')}
 Phone: {user.get('phone') or 'N/A'}
 Location: {user.get('location') or 'N/A'}
 LinkedIn: {user.get('linkedin_url') or ''}
+GitHub: {user.get('github_url') or ''}
+Portfolio: {user.get('portfolio_url') or ''}
 Years experience: {user.get('years_experience') or 'N/A'}
 Education: {user.get('education_level') or 'N/A'}
 Work authorization: {user.get('work_authorization') or 'N/A'}
@@ -141,54 +217,35 @@ Target roles: {roles}
 Target locations: {locations}
 Skills: {skills}
 Summary: {user.get('summary') or 'N/A'}
-""".strip()
+Pre-written answers: {custom}""".strip()
 
-    # ── Batch job evaluation (Haiku, 1 call per 10 jobs) ──────────────────
+    # ── Batch job scoring (Haiku) ────────────────────────────────────────
     async def _batch_score_jobs(self, jobs: list[dict], user: dict) -> list[dict]:
-        """
-        Score up to 10 jobs at once using Haiku.
-        Returns list of jobs with 'score' (0-100) and 'reason' added.
-        Uses prompt caching on the user profile.
-        """
         if not jobs:
             return []
-
         job_list = "\n".join(
             f"{i+1}. {j.get('title','')} at {j.get('company','')} — {j.get('location','')}: {j.get('snippet','')[:300]}"
             for i, j in enumerate(jobs)
         )
-
         try:
             resp = await self.client.messages.create(
                 model="claude-haiku-4-5-20251001",
                 max_tokens=800,
-                system=[
-                    {
-                        "type": "text",
-                        "text": "You are a job matching assistant. Score each job 0-100 for fit. Reply ONLY with JSON array: [{\"index\":1,\"score\":85,\"reason\":\"brief reason\"},...]",
-                        "cache_control": {"type": "ephemeral"},
-                    }
-                ],
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": f"Candidate profile:\n{self._profile_text(user)}",
-                                "cache_control": {"type": "ephemeral"},
-                            },
-                            {
-                                "type": "text",
-                                "text": f"Score these jobs:\n{job_list}",
-                            }
-                        ]
-                    }
-                ],
+                system=[{
+                    "type": "text",
+                    "text": "You are a job matching assistant. Score each job 0-100 for fit. Reply ONLY with JSON array: [{\"index\":1,\"score\":85,\"reason\":\"brief reason\"},...]",
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"Candidate profile:\n{self._profile_text(user)}", "cache_control": {"type": "ephemeral"}},
+                        {"type": "text", "text": f"Score these jobs:\n{job_list}"},
+                    ]
+                }],
                 extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
             )
             text = resp.content[0].text.strip()
-            # Parse JSON robustly
             match = re.search(r'\[.*\]', text, re.DOTALL)
             if match:
                 scores = json.loads(match.group())
@@ -197,47 +254,13 @@ Summary: {user.get('summary') or 'N/A'}
                     if 0 <= idx < len(jobs):
                         jobs[idx]['score']  = item.get('score', 0)
                         jobs[idx]['reason'] = item.get('reason', '')
-        except Exception as e:
-            # Fallback: score everything as 75 so we don't block
+        except Exception:
             for j in jobs:
                 j.setdefault('score', 75)
                 j.setdefault('reason', 'Could not evaluate')
-
         return jobs
 
-    # ── Answer unknown form field (Haiku, ~50 tokens) ────────────────────
-    async def _answer_field(self, question: str, context: str, user: dict) -> str:
-        """Ask Haiku for the best answer to an unfamiliar form field."""
-        try:
-            resp = await self.client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=200,
-                system=[{
-                    "type": "text",
-                    "text": "Answer job application form fields concisely using the candidate profile. Be honest — never fabricate. Output ONLY the answer text, nothing else.",
-                    "cache_control": {"type": "ephemeral"},
-                }],
-                messages=[{
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": f"Candidate:\n{self._profile_text(user)}",
-                            "cache_control": {"type": "ephemeral"},
-                        },
-                        {
-                            "type": "text",
-                            "text": f"Form field: {question}\nContext: {context}\nAnswer:",
-                        }
-                    ]
-                }],
-                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-            )
-            return resp.content[0].text.strip()
-        except Exception:
-            return ""
-
-    # ── Scripted LinkedIn login ────────────────────────────────────────────
+    # ── LinkedIn login ───────────────────────────────────────────────────
     async def _linkedin_login(self, page, user: dict, session: HuntSession) -> bool:
         email    = user.get('linkedin_email')
         password = user.get('linkedin_password')
@@ -248,12 +271,16 @@ Summary: {user.get('summary') or 'N/A'}
         session.emit({"type": "action", "message": "Logging in to LinkedIn..."})
         try:
             await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=20000)
-            await asyncio.sleep(1)
-            await page.fill('input[name="session_key"]', email)
-            await page.fill('input[name="session_password"]', password)
+            await asyncio.sleep(1.5)
+            # Type credentials with human-like delay
+            await page.locator('input[name="session_key"]').click()
+            await page.keyboard.type(email, delay=25)
+            await asyncio.sleep(0.3)
+            await page.locator('input[name="session_password"]').click()
+            await page.keyboard.type(password, delay=25)
+            await asyncio.sleep(0.5)
             await page.click('button[type="submit"]')
             await asyncio.sleep(3)
-            # Check if we're logged in
             if "feed" in page.url or "checkpoint" in page.url or "home" in page.url:
                 session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
                 return True
@@ -264,13 +291,11 @@ Summary: {user.get('summary') or 'N/A'}
             session.emit({"type": "action", "message": f"LinkedIn login error: {str(e)[:60]}"})
             return False
 
-    # ── Extract job listings from current page (scripted DOM) ─────────────
+    # ── Extract jobs from page DOM (zero AI cost) ────────────────────────
     async def _extract_jobs_from_page(self, page, board: str) -> list[dict]:
-        """Extract job listings using Playwright DOM queries — zero AI cost."""
         jobs = []
         try:
             if board == "linkedin":
-                # LinkedIn job cards
                 cards = await page.query_selector_all('.job-card-container, .jobs-search-results__list-item, [data-job-id]')
                 for card in cards[:20]:
                     try:
@@ -278,21 +303,17 @@ Summary: {user.get('summary') or 'N/A'}
                         company = await card.query_selector('.job-card-container__company-name, .base-search-card__subtitle, h4')
                         loc     = await card.query_selector('.job-card-container__metadata-item, .job-search-card__location')
                         link    = await card.query_selector('a[href*="/jobs/view/"], a[href*="jobs/view"]')
-
                         title_text   = (await title.inner_text()).strip()   if title   else ''
                         company_text = (await company.inner_text()).strip() if company else ''
                         loc_text     = (await loc.inner_text()).strip()     if loc     else ''
                         url          = await link.get_attribute('href')     if link    else ''
-
                         if title_text and url:
-                            # Normalize URL
                             if url.startswith('/'):
                                 url = 'https://www.linkedin.com' + url
                             url = url.split('?')[0]
                             jobs.append({'title': title_text, 'company': company_text, 'location': loc_text, 'url': url, 'snippet': '', 'board': 'linkedin'})
                     except Exception:
                         continue
-
             elif board == "tokyodev":
                 cards = await page.query_selector_all('article, .job-listing, [class*="job"]')
                 for card in cards[:15]:
@@ -306,166 +327,297 @@ Summary: {user.get('summary') or 'N/A'}
                             jobs.append({'title': (await title.inner_text()).strip(), 'company': '', 'location': 'Japan', 'url': url, 'snippet': '', 'board': 'tokyodev'})
                     except Exception:
                         continue
-
         except Exception:
             pass
 
-        # Fallback: read page text and parse with a quick regex
         if not jobs:
             try:
                 text = await page.inner_text("body")
-                # Extract job-like patterns from text
-                lines = [l.strip() for l in text.split('\n') if len(l.strip()) > 10 and len(l.strip()) < 100]
+                lines = [l.strip() for l in text.split('\n') if 10 < len(l.strip()) < 100]
                 url = page.url
                 for i, line in enumerate(lines[:30]):
                     if any(k in line.lower() for k in ['engineer', 'developer', 'designer', 'manager', 'analyst', 'scientist', 'intern']):
                         jobs.append({'title': line, 'company': '', 'location': '', 'url': url + f'#job-{i}', 'snippet': '', 'board': board})
             except Exception:
                 pass
-
         return jobs
 
-    # ── Scripted Easy Apply on LinkedIn ───────────────────────────────────
-    async def _do_linkedin_easy_apply(self, page, user: dict, resume_path: str, session: HuntSession) -> dict:
-        """
-        Fill LinkedIn Easy Apply form using user data.
-        Only calls AI for unknown text fields (rare, ~1-2 per application).
-        Returns: {'success': bool, 'fields_filled': [...], 'concerns': [...]}
-        """
-        fields_filled = []
-        concerns      = []
+    # ── Human-like helpers ───────────────────────────────────────────────
 
-        async def fill_if_found(selectors: list, value: str, label: str):
-            if not value:
-                return False
-            for sel in selectors:
-                try:
-                    el = page.locator(sel).first
-                    if await el.count() > 0 and await el.is_visible():
-                        await el.fill(str(value))
-                        fields_filled.append(label)
-                        return True
-                except Exception:
-                    continue
-            return False
+    async def _move_cursor_to(self, page, session: HuntSession, x: int, y: int):
+        """Move cursor visually to coordinates."""
+        session.cursor_x = x
+        session.cursor_y = y
+        await page.mouse.move(x, y, steps=8)
 
-        # Known fields: fill from user data, no AI needed
-        await fill_if_found(['input[id*="firstName"], input[name*="firstName"]', 'input[placeholder*="first" i]'], (user.get('full_name') or '').split()[0], 'First name')
-        await fill_if_found(['input[id*="lastName"], input[name*="lastName"]', 'input[placeholder*="last" i]'], ' '.join((user.get('full_name') or '').split()[1:]) or '', 'Last name')
-        await fill_if_found(['input[id*="email"], input[type="email"]'], user.get('email', ''), 'Email')
-        await fill_if_found(['input[id*="phone"], input[type="tel"]'], user.get('phone', ''), 'Phone')
-        await fill_if_found(['input[id*="city"], input[placeholder*="city" i], input[id*="location"]'], user.get('location', ''), 'Location')
-        await fill_if_found(['input[id*="linkedin"], input[placeholder*="linkedin" i]'], user.get('linkedin_url', ''), 'LinkedIn')
-        await fill_if_found(['input[id*="github"], input[placeholder*="github" i]'], user.get('github_url', ''), 'GitHub')
-        await fill_if_found(['input[id*="portfolio"], input[placeholder*="portfolio" i], input[id*="website" i]'], user.get('portfolio_url', ''), 'Portfolio')
-        await fill_if_found(['input[id*="years"], input[placeholder*="years" i]'], str(user.get('years_experience') or ''), 'Years experience')
-
-        # Resume upload
-        if resume_path:
-            import os
-            if os.path.exists(resume_path):
-                try:
-                    file_inputs = await page.query_selector_all('input[type="file"]')
-                    for fi in file_inputs:
-                        if await fi.is_visible() or True:
-                            await fi.set_input_files(resume_path)
-                            await asyncio.sleep(1)
-                            fields_filled.append('Resume')
-                            break
-                except Exception as e:
-                    concerns.append(f'Resume upload failed: {str(e)[:50]}')
-
-        # Handle unknown text inputs via Haiku (only the ones we couldn't auto-fill)
+    async def _click_element(self, page, session: HuntSession, element):
+        """Click with visible cursor movement."""
         try:
-            unknown_inputs = await page.query_selector_all('input[type="text"]:not([value]), textarea')
-            page_text = await page.inner_text("body")
-            for inp in unknown_inputs[:5]:  # limit to 5 unknown fields
-                try:
-                    label_text = ''
-                    # Try to find the label for this input
-                    inp_id = await inp.get_attribute('id') or ''
-                    if inp_id:
-                        label_el = page.locator(f'label[for="{inp_id}"]')
-                        if await label_el.count() > 0:
-                            label_text = (await label_el.inner_text()).strip()
-                    if not label_text:
-                        aria = await inp.get_attribute('aria-label') or await inp.get_attribute('placeholder') or ''
-                        label_text = aria.strip()
-                    if not label_text or len(label_text) < 3:
-                        continue
-                    # Skip known fields we already handled
-                    skip_words = ['first', 'last', 'email', 'phone', 'city', 'location', 'linkedin', 'github', 'years', 'portfolio']
-                    if any(w in label_text.lower() for w in skip_words):
-                        continue
-                    # Ask Haiku
-                    answer = await self._answer_field(label_text, page_text[:1000], user)
-                    if answer:
-                        await inp.fill(answer)
-                        fields_filled.append(label_text)
-                except Exception:
-                    continue
+            box = await element.bounding_box()
+            if box:
+                cx = int(box['x'] + box['width'] / 2)
+                cy = int(box['y'] + box['height'] / 2)
+                await self._move_cursor_to(page, session, cx, cy)
         except Exception:
             pass
+        await element.click()
+        await asyncio.sleep(0.4)
 
-        # Handle dropdowns and radio buttons for common questions
+    async def _human_type(self, page, element, text: str, session: HuntSession):
+        """Type with human-like character-by-character delay."""
         try:
-            selects = await page.query_selector_all('select')
-            for sel in selects[:5]:
-                try:
-                    aria = await sel.get_attribute('aria-label') or ''
-                    options = await sel.query_selector_all('option')
-                    option_texts = [await o.inner_text() for o in options]
+            box = await element.bounding_box()
+            if box:
+                cx = int(box['x'] + box['width'] / 2)
+                cy = int(box['y'] + box['height'] / 2)
+                await self._move_cursor_to(page, session, cx, cy)
+        except Exception:
+            pass
+        await element.click()
+        await asyncio.sleep(0.15)
+        # Clear existing value first
+        await element.fill('')
+        # Type with visible delay — faster for long text
+        delay = 20 if len(text) < 30 else 8
+        await element.type(text, delay=delay)
+        await asyncio.sleep(0.2)
 
-                    if 'experience' in aria.lower() or 'years' in aria.lower():
-                        yrs = str(user.get('years_experience') or '0')
-                        # Find closest option
-                        for opt_text in option_texts:
-                            if yrs in opt_text:
-                                await sel.select_option(label=opt_text)
+    async def _smooth_scroll(self, page, amount: int, steps: int = 4):
+        """Scroll gradually for visible effect."""
+        step_amount = amount // steps
+        for _ in range(steps):
+            await page.evaluate(f"window.scrollBy(0, {step_amount})")
+            await asyncio.sleep(0.3)
+
+    # ── Opus-powered form filling ────────────────────────────────────────
+
+    async def _opus_fill_form(self, page, user: dict, resume_path: str, session: HuntSession, job_title: str, company: str) -> dict:
+        """
+        Use Opus to intelligently read and fill an application form.
+        Human-like typing with visible cursor movement.
+        Returns: {'fields_filled': [...], 'concerns': [...], 'submitted': bool}
+        """
+        all_fields_filled = []
+        all_concerns = []
+
+        # Process up to 5 form pages (multi-step forms)
+        for page_num in range(5):
+            if session._stopped:
+                break
+
+            # Get current form state
+            await asyncio.sleep(0.5)
+            try:
+                page_text = await page.inner_text("body")
+                page_text = page_text[:3000]
+            except Exception:
+                page_text = ""
+
+            # Ask Opus to analyze and fill
+            prompt = f"""You are filling a job application for "{job_title}" at "{company}".
+
+Current form page text:
+{page_text}
+
+Candidate profile:
+{self._profile_text(user)}
+
+Resume file path: {resume_path}
+
+Look at the form fields above. Fill every empty field using the candidate's data.
+Call fill_field for each text input, select_option for dropdowns, click_button for radio/checkbox,
+and upload_resume if there's a file upload. When all fields are filled, call form_complete."""
+
+            try:
+                resp = await self.client.messages.create(
+                    model="claude-opus-4-6",
+                    max_tokens=2048,
+                    system=FORM_FILL_SYSTEM,
+                    tools=FORM_FILL_TOOLS,
+                    messages=[{"role": "user", "content": prompt}],
+                )
+            except Exception as e:
+                session.emit({"type": "action", "message": f"AI form analysis failed: {str(e)[:60]}"})
+                all_concerns.append("AI could not analyze form")
+                break
+
+            # Execute each tool call with human-like interaction
+            form_done = False
+            next_action = None
+
+            for block in resp.content:
+                if session._stopped:
+                    break
+                if not hasattr(block, 'type') or block.type != 'tool_use':
+                    continue
+
+                tool_name = block.name
+                inp = block.input
+
+                if tool_name == "fill_field":
+                    hint = inp.get("selector_hint", "")
+                    value = inp.get("value", "")
+                    fname = inp.get("field_name", hint)
+                    if not value:
+                        continue
+
+                    session.emit({"type": "action", "message": f"Filling: {fname}"})
+                    filled = False
+                    for strategy in [
+                        f'[placeholder*="{hint}" i]',
+                        f'[aria-label*="{hint}" i]',
+                        f'[name*="{hint}" i]',
+                        f'[id*="{hint}" i]',
+                        f'label:has-text("{hint}") + input',
+                        f'label:has-text("{hint}") ~ input',
+                        f'label:has-text("{hint}") input',
+                        f'textarea[placeholder*="{hint}" i]',
+                        f'textarea[aria-label*="{hint}" i]',
+                    ]:
+                        try:
+                            el = page.locator(strategy).first
+                            if await el.count() > 0 and await el.is_visible():
+                                await self._human_type(page, el, value, session)
+                                filled = True
+                                all_fields_filled.append(fname)
                                 break
-                    elif 'authorized' in aria.lower() or 'work auth' in aria.lower() or 'legally' in aria.lower():
-                        await sel.select_option(label='Yes') if 'Yes' in option_texts else None
-                    elif 'remote' in aria.lower():
-                        pref = user.get('remote_preference', 'any')
-                        if 'yes' in option_texts and 'remote' in pref:
-                            await sel.select_option(label='Yes')
+                        except Exception:
+                            continue
+                    if not filled:
+                        all_concerns.append(f"Could not find field: {fname}")
+
+                elif tool_name == "select_option":
+                    hint = inp.get("selector_hint", "")
+                    opt = inp.get("option_text", "")
+                    session.emit({"type": "action", "message": f"Selecting: {opt}"})
+                    for strategy in [
+                        f'select[aria-label*="{hint}" i]',
+                        f'select[name*="{hint}" i]',
+                        f'label:has-text("{hint}") + select',
+                        f'label:has-text("{hint}") ~ select',
+                    ]:
+                        try:
+                            el = page.locator(strategy).first
+                            if await el.count() > 0:
+                                await el.select_option(label=opt)
+                                all_fields_filled.append(hint)
+                                await asyncio.sleep(0.3)
+                                break
+                        except Exception:
+                            continue
+
+                elif tool_name == "click_button":
+                    btn_text = inp.get("button_text", "")
+                    reason = inp.get("reason", btn_text)
+                    session.emit({"type": "action", "message": f"Clicking: {reason}"})
+                    for strategy in [
+                        f'button:has-text("{btn_text}")',
+                        f'[aria-label*="{btn_text}" i]',
+                        f'label:has-text("{btn_text}")',
+                        f'[role="button"]:has-text("{btn_text}")',
+                        f'input[value*="{btn_text}" i]',
+                    ]:
+                        try:
+                            el = page.locator(strategy).first
+                            if await el.count() > 0:
+                                await self._click_element(page, session, el)
+                                break
+                        except Exception:
+                            continue
+
+                elif tool_name == "upload_resume":
+                    if resume_path and os.path.exists(resume_path):
+                        session.emit({"type": "action", "message": "Uploading resume..."})
+                        try:
+                            file_inputs = await page.query_selector_all('input[type="file"]')
+                            for fi in file_inputs:
+                                await fi.set_input_files(resume_path)
+                                all_fields_filled.append("Resume")
+                                await asyncio.sleep(1)
+                                break
+                        except Exception:
+                            all_concerns.append("Resume upload failed")
+
+                elif tool_name == "form_complete":
+                    form_done = True
+                    next_action = inp.get("next_action", "done")
+                    if inp.get("concerns"):
+                        all_concerns.extend(inp["concerns"])
+                    break
+
+            if not form_done:
+                break
+
+            # Handle navigation between form pages
+            if next_action == "click_next":
+                session.emit({"type": "action", "message": "Moving to next page..."})
+                for sel in ['button:has-text("Next")', 'button:has-text("Continue")', 'button:has-text("Review")']:
+                    try:
+                        btn = page.locator(sel).first
+                        if await btn.count() > 0 and await btn.is_visible():
+                            await self._click_element(page, session, btn)
+                            await asyncio.sleep(1)
+                            break
+                    except Exception:
+                        continue
+            elif next_action == "click_submit" or next_action == "done":
+                break
+
+        return {
+            'fields_filled': all_fields_filled,
+            'concerns': all_concerns,
+        }
+
+    # ── Submit application ───────────────────────────────────────────────
+
+    async def _submit_application(self, page, session: HuntSession) -> bool:
+        """Click through form steps to final submit."""
+        for _ in range(6):
+            await asyncio.sleep(0.6)
+            for btn_sel in [
+                'button:has-text("Submit application")',
+                'button:has-text("Submit")',
+                'button:has-text("Next")',
+                'button[aria-label*="Submit"]',
+            ]:
+                try:
+                    btn = page.locator(btn_sel).first
+                    if await btn.count() > 0 and await btn.is_visible():
+                        btn_text = (await btn.inner_text()).strip().lower()
+                        await self._click_element(page, session, btn)
+                        await asyncio.sleep(0.8)
+                        if 'submit' in btn_text:
+                            return True
+                        break
                 except Exception:
                     continue
-        except Exception:
-            pass
 
-        return {'success': True, 'fields_filled': fields_filled, 'concerns': concerns}
+            # Check if modal closed (submission happened)
+            try:
+                modal = page.locator('[role="dialog"], .artdeco-modal')
+                if await modal.count() == 0:
+                    return True
+            except Exception:
+                break
+        return False
 
-    # ── Screenshot loop ────────────────────────────────────────────────────
+    # ── Screenshot loop (5fps for smooth streaming) ──────────────────────
+
     async def _screenshot_loop(self, page, session: HuntSession):
         while not session._stopped:
             try:
-                png  = await page.screenshot(full_page=False)
-                b64  = base64.b64encode(png).decode()
+                png = await page.screenshot(full_page=False)
+                b64 = base64.b64encode(png).decode()
                 meta = {}
                 if session.cursor_x is not None:
                     meta = {"cx": session.cursor_x, "cy": session.cursor_y}
                 session.emit({"type": "screenshot", "data": b64, **meta})
             except Exception:
                 pass
-            await asyncio.sleep(0.35)
+            await asyncio.sleep(0.2)  # 5fps for smooth viewing
 
-    # ── Click helper with cursor tracking ─────────────────────────────────
-    async def _click(self, page, session: HuntSession, element):
-        try:
-            box = await element.bounding_box()
-            if box:
-                cx = int(box['x'] + box['width'] / 2)
-                cy = int(box['y'] + box['height'] / 2)
-                session.cursor_x = cx
-                session.cursor_y = cy
-                await page.mouse.move(cx, cy)
-        except Exception:
-            pass
-        await element.click()
-        await asyncio.sleep(0.5)
+    # ── Main hunt loop ───────────────────────────────────────────────────
 
-    # ── Main run loop ──────────────────────────────────────────────────────
     async def run(self, user: dict, resume: dict, session: HuntSession, db_session_factory):
         try:
             from playwright.async_api import async_playwright
@@ -473,7 +625,7 @@ Summary: {user.get('summary') or 'N/A'}
             session.emit({"type": "error", "message": "Playwright not installed."})
             return
 
-        session.emit({"type": "status", "message": "Initializing autonomous hunt..."})
+        session.emit({"type": "status", "message": "Starting autonomous hunt..."})
 
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
@@ -482,7 +634,7 @@ Summary: {user.get('summary') or 'N/A'}
                     '--no-sandbox', '--disable-dev-shm-usage',
                     '--disable-blink-features=AutomationControlled',
                     '--window-size=1280,900', '--disable-extensions',
-                ]
+                ],
             )
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
@@ -497,7 +649,7 @@ Summary: {user.get('summary') or 'N/A'}
                 window.chrome = { runtime: {} };
             """)
             page = await context.new_page()
-            session.page = page   # expose for interactive control when paused
+            session.page = page
 
             screenshot_task = asyncio.create_task(self._screenshot_loop(page, session))
             resume_path = resume.get('file_path', '') if resume else ''
@@ -506,13 +658,13 @@ Summary: {user.get('summary') or 'N/A'}
                 # ── Phase 1: Login ────────────────────────────────────────
                 logged_in = await self._linkedin_login(page, user, session)
                 await session.check_paused()
-                if session._stopped: return
+                if session._stopped:
+                    return
 
-                # ── Phase 2: Board loop ───────────────────────────────────
+                # ── Phase 2: Navigate to job boards ──────────────────────
                 boards = []
                 if logged_in or user.get('target_locations'):
                     boards.append('linkedin')
-                # Add Japan boards if targeting Japan
                 locs = ' '.join(user.get('target_locations') or []).lower()
                 if 'japan' in locs or 'tokyo' in locs:
                     boards.extend(['tokyodev'])
@@ -521,14 +673,13 @@ Summary: {user.get('summary') or 'N/A'}
 
                 total_evaluated = 0
                 total_applied   = 0
-                MAX_EVALUATE    = 40  # stop after evaluating 40 jobs
-                MAX_APPLY       = 8   # stop after 8 applications per session
+                MAX_EVALUATE    = 40
+                MAX_APPLY       = 10  # increased from 8
 
                 for board in boards:
                     if session._stopped or total_evaluated >= MAX_EVALUATE or total_applied >= MAX_APPLY:
                         break
 
-                    # Navigate to board
                     await session.check_paused()
                     roles     = user.get('target_roles') or []
                     query     = roles[0] if roles else 'Software Engineer'
@@ -541,13 +692,13 @@ Summary: {user.get('summary') or 'N/A'}
                     if board == 'linkedin':
                         url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r604800&sortBy=DD"
                         if logged_in:
-                            url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r604800&f_LF=f_AL&sortBy=DD"  # Easy Apply filter
+                            url += "&f_LF=f_AL"
                     elif board == 'tokyodev':
                         url = f"https://www.tokyodev.com/jobs?q={q}"
                     else:
                         url = f"https://www.linkedin.com/jobs/search/?keywords={q}&sortBy=DD"
 
-                    session.emit({"type": "action", "message": f"Searching {board.title()} for '{query}' in '{location}'"})
+                    session.emit({"type": "action", "message": f"Searching {board.title()} for '{query}' in '{location}'..."})
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
                         await asyncio.sleep(2)
@@ -555,34 +706,31 @@ Summary: {user.get('summary') or 'N/A'}
                         session.emit({"type": "action", "message": f"Navigation failed: {str(e)[:60]}"})
                         continue
 
-                    # Scroll to load more jobs
-                    for _ in range(3):
-                        await page.evaluate("window.scrollBy(0, 600)")
-                        await asyncio.sleep(0.5)
+                    # Smooth scroll to load more jobs (visible to user)
+                    session.emit({"type": "action", "message": "Browsing listings..."})
+                    await self._smooth_scroll(page, 1800, steps=6)
+                    await asyncio.sleep(0.5)
 
-                    # Extract jobs from page (scripted DOM, zero AI)
+                    # Extract jobs
                     raw_jobs = await self._extract_jobs_from_page(page, board)
-                    session.emit({"type": "action", "message": f"Found {len(raw_jobs)} listings on {board.title()}"})
+                    session.emit({"type": "action", "message": f"Found {len(raw_jobs)} listings"})
 
-                    # Filter out already-seen URLs
                     new_jobs = [j for j in raw_jobs if j.get('url') and j['url'] not in session.seen_urls]
-
                     if not new_jobs:
-                        session.emit({"type": "action", "message": "All listings already seen — skipping"})
+                        session.emit({"type": "action", "message": "All listings already seen — moving on"})
                         continue
 
-                    # ── Phase 3: Batch score with Haiku ──────────────────
-                    session.emit({"type": "thinking", "message": f"Evaluating {len(new_jobs)} jobs with AI..."})
+                    # ── Phase 3: Score jobs with Haiku ───────────────────
+                    session.emit({"type": "thinking", "message": f"Evaluating {len(new_jobs)} jobs..."})
                     BATCH = 10
                     for i in range(0, len(new_jobs), BATCH):
-                        if session._stopped: break
-                        batch = new_jobs[i:i+BATCH]
-                        await self._batch_score_jobs(batch, user)
+                        if session._stopped:
+                            break
+                        await self._batch_score_jobs(new_jobs[i:i+BATCH], user)
 
-                    # Sort by score descending
                     new_jobs.sort(key=lambda j: j.get('score', 0), reverse=True)
 
-                    # Emit decisions
+                    # Show decisions to user
                     for job in new_jobs:
                         score    = job.get('score', 0)
                         decision = 'apply' if score >= 70 else 'skip'
@@ -604,9 +752,10 @@ Summary: {user.get('summary') or 'N/A'}
                         })
                         total_evaluated += 1
 
-                    # ── Phase 4: Apply to matches ──────────────────────────
+                    # ── Phase 4: Apply to qualifying jobs ────────────────
                     apply_jobs = [j for j in new_jobs if j.get('score', 0) >= 70]
-                    session.emit({"type": "status", "message": f"Applying to {len(apply_jobs)} matched jobs..."})
+                    if apply_jobs:
+                        session.emit({"type": "status", "message": f"Applying to {len(apply_jobs)} matched jobs..."})
 
                     for job in apply_jobs:
                         if session._stopped or total_applied >= MAX_APPLY:
@@ -616,17 +765,24 @@ Summary: {user.get('summary') or 'N/A'}
                         job_title = job.get('title', 'Unknown')
                         company   = job.get('company', 'Unknown')
                         job_url   = job.get('url', '')
-
                         if not job_url:
                             continue
 
+                        # Navigate to job page (user sees the listing)
                         session.emit({"type": "action", "message": f"Opening: {job_title} at {company}"})
                         try:
                             await page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
-                            await asyncio.sleep(1.5)
+                            await asyncio.sleep(2)  # Let user read the job
                         except Exception as e:
                             session.emit({"type": "action", "message": f"Could not open job: {str(e)[:50]}"})
                             continue
+
+                        # Scroll down to read the listing (visible)
+                        await self._smooth_scroll(page, 400, steps=3)
+                        await asyncio.sleep(0.5)
+                        # Scroll back up to find Apply button
+                        await page.evaluate("window.scrollTo(0, 0)")
+                        await asyncio.sleep(0.5)
 
                         # Find and click Easy Apply
                         easy_apply_clicked = False
@@ -639,7 +795,7 @@ Summary: {user.get('summary') or 'N/A'}
                             try:
                                 el = page.locator(sel).first
                                 if await el.count() > 0 and await el.is_visible():
-                                    await self._click(page, session, el)
+                                    await self._click_element(page, session, el)
                                     await asyncio.sleep(1.5)
                                     easy_apply_clicked = True
                                     session.emit({"type": "action", "message": "Opened application form"})
@@ -648,67 +804,42 @@ Summary: {user.get('summary') or 'N/A'}
                                 continue
 
                         if not easy_apply_clicked:
-                            session.emit({"type": "action", "message": f"No apply button found for {job_title} — skipping"})
+                            session.emit({"type": "action", "message": f"No apply button found — skipping"})
                             continue
 
-                        # Fill the form
-                        session.emit({"type": "action", "message": "Filling application form..."})
-                        fill_result = await self._do_linkedin_easy_apply(page, user, resume_path, session)
-                        filled = fill_result.get('fields_filled', [])
+                        # ── Opus fills the form (human-like, visible) ────
+                        session.emit({"type": "thinking", "message": "AI is reading the form..."})
+                        fill_result = await self._opus_fill_form(
+                            page, user, resume_path, session, job_title, company
+                        )
+                        filled   = fill_result.get('fields_filled', [])
                         concerns = fill_result.get('concerns', [])
 
                         if filled:
-                            session.emit({"type": "action", "message": f"Filled: {', '.join(filled[:5])}"})
+                            session.emit({"type": "action", "message": f"Filled: {', '.join(filled[:6])}"})
 
-                        # Confirm or auto-apply
+                        # ── Confirm or auto-apply ────────────────────────
                         if session.auto_apply:
-                            session.emit({"type": "action", "message": f"⚡ Auto-apply: submitting {job_title}..."})
+                            session.emit({"type": "action", "message": f"Auto-submitting {job_title}..."})
                         else:
-                            # Show confirmation
                             session.emit({
-                                "type":         "confirm_required",
-                                "job_title":    job_title,
-                                "company":      company,
-                                "summary":      f"Application ready for {job_title} at {company}",
+                                "type":          "confirm_required",
+                                "job_title":     job_title,
+                                "company":       company,
+                                "summary":       f"Application ready for {job_title} at {company}",
                                 "fields_filled": filled,
-                                "concerns":     concerns,
+                                "concerns":      concerns,
                             })
                             decision = await session.wait_for_confirmation()
                             if decision == 'skip':
                                 session.emit({"type": "action", "message": "Skipped"})
                                 continue
                             elif decision == 'stop':
-                                session.emit({"type": "action", "message": "Hunt stopped"})
                                 session._stopped = True
                                 break
 
-                        # Submit: click through form steps then final submit
-                        submitted = False
-                        for _ in range(8):  # up to 8 form pages
-                            await asyncio.sleep(0.8)
-                            # Look for Next or Submit button
-                            for btn_sel in ['button:has-text("Submit application")', 'button:has-text("Submit")', 'button:has-text("Next")', 'button[aria-label*="Submit"]']:
-                                try:
-                                    btn = page.locator(btn_sel).first
-                                    if await btn.count() > 0 and await btn.is_visible():
-                                        btn_text = (await btn.inner_text()).strip().lower()
-                                        await self._click(page, session, btn)
-                                        await asyncio.sleep(1)
-                                        if 'submit' in btn_text:
-                                            submitted = True
-                                        break
-                                except Exception:
-                                    continue
-                            if submitted:
-                                break
-                            # Check if modal closed (application submitted)
-                            try:
-                                modal = page.locator('[role="dialog"], .artdeco-modal')
-                                if await modal.count() == 0:
-                                    submitted = True
-                                    break
-                            except Exception:
-                                break
+                        # ── Submit ───────────────────────────────────────
+                        submitted = await self._submit_application(page, session)
 
                         if submitted:
                             session.jobs_applied += 1
@@ -724,7 +855,7 @@ Summary: {user.get('summary') or 'N/A'}
 
                         await asyncio.sleep(1)
 
-                # ── Wrap up ───────────────────────────────────────────────
+                # ── Wrap up ──────────────────────────────────────────────
                 if not session._stopped:
                     session.emit({
                         "type":        "complete",
