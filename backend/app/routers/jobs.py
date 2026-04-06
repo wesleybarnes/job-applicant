@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from app.database import get_db
 from app import models, schemas
+from app.auth import get_current_user
 from app.services.job_scraper import search_jobs_api
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -73,3 +74,54 @@ async def search_jobs(
     for j in saved_jobs:
         db.refresh(j)
     return saved_jobs
+
+
+@router.post("/discover", response_model=list[schemas.JobResponse])
+async def discover_jobs(
+    current_user: models.UserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Auto-discover jobs based on user's profile (target roles + locations).
+    Searches each role×location combination and saves results to DB."""
+    roles = current_user.target_roles or []
+    locations = current_user.target_locations or []
+    if not roles:
+        roles = ["Software Engineer"]
+    if not locations:
+        locations = [current_user.location or "Remote"]
+
+    all_jobs = []
+    seen_ids = set()
+
+    # Search for each role in each location (max 4 combos to stay fast)
+    combos = [(r, l) for r in roles[:2] for l in locations[:2]]
+    for query, location in combos:
+        try:
+            jobs_data = await search_jobs_api(query, location, None)
+        except Exception:
+            continue
+
+        for job_data in jobs_data:
+            ext_id = job_data.get("external_id", "")
+            source = job_data.get("source", "")
+            dedup_key = f"{source}:{ext_id}"
+            if dedup_key in seen_ids:
+                continue
+            seen_ids.add(dedup_key)
+
+            existing = db.query(models.Job).filter(
+                models.Job.external_id == ext_id,
+                models.Job.source == source,
+            ).first()
+            if existing:
+                all_jobs.append(existing)
+                continue
+            db_job = models.Job(**job_data)
+            db.add(db_job)
+            db.flush()
+            all_jobs.append(db_job)
+
+    db.commit()
+    for j in all_jobs:
+        db.refresh(j)
+    return all_jobs

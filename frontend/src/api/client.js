@@ -59,6 +59,7 @@ export const listJobs = (params) => api.get('/jobs/', { params }).then(r => r.da
 export const createJob = (data) => api.post('/jobs/', data).then(r => r.data)
 export const searchJobs = (data, userId) =>
   api.post(`/jobs/search${userId ? `?user_id=${userId}` : ''}`, data).then(r => r.data)
+export const discoverJobs = () => api.post('/jobs/discover').then(r => r.data)
 export const deleteJob = (id) => api.delete(`/jobs/${id}`).then(r => r.data)
 
 // ─── Applications ────────────────────────────────────────────────────────────
