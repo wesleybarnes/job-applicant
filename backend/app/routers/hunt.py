@@ -68,16 +68,9 @@ async def start_hunt(
             detail="No resume found. Please upload your resume from the Dashboard before starting a hunt.",
         )
 
-    # Collect all URLs seen in past hunts for this user → no repeats
-    past_sessions = db.query(models.HuntSession).filter(
-        models.HuntSession.user_id == current_user.id,
-        models.HuntSession.status.in_(["complete", "stopped"]),
-    ).all()
+    # Only dedup within the current session — don't block jobs from past hunts.
+    # Users should be able to re-apply to jobs they've seen before in new sessions.
     seen_urls: set = set()
-    for ps in past_sessions:
-        for url in (ps.seen_job_urls or []):
-            if url:
-                seen_urls.add(url)
 
     hunt_db = models.HuntSession(
         user_id=current_user.id,

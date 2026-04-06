@@ -296,17 +296,40 @@ Pre-written answers: {custom}""".strip()
         jobs = []
         try:
             if board == "linkedin":
-                cards = await page.query_selector_all('.job-card-container, .jobs-search-results__list-item, [data-job-id]')
-                for card in cards[:20]:
+                # Try multiple selector strategies — LinkedIn changes DOM between logged-in, guest, and mobile
+                card_selectors = [
+                    # Logged-in selectors
+                    '.job-card-container',
+                    '.jobs-search-results__list-item',
+                    '[data-job-id]',
+                    # Guest/public page selectors
+                    '.base-card',
+                    '.base-search-card',
+                    '.jobs-search__results-list > li',
+                    '.job-search-card',
+                    'ul.jobs-search__results-list li',
+                    # Generic fallback
+                    '[class*="job-card"]',
+                    '[class*="search-card"]',
+                ]
+                cards = []
+                for sel in card_selectors:
+                    cards = await page.query_selector_all(sel)
+                    if len(cards) > 2:
+                        break
+
+                for card in cards[:25]:
                     try:
-                        title   = await card.query_selector('.job-card-list__title, .base-search-card__title, h3')
-                        company = await card.query_selector('.job-card-container__company-name, .base-search-card__subtitle, h4')
-                        loc     = await card.query_selector('.job-card-container__metadata-item, .job-search-card__location')
-                        link    = await card.query_selector('a[href*="/jobs/view/"], a[href*="jobs/view"]')
+                        title   = await card.query_selector('.job-card-list__title, .base-search-card__title, .base-card__full-link, h3, h4.base-search-card__title')
+                        company = await card.query_selector('.job-card-container__company-name, .base-search-card__subtitle, .hidden-nested-link, h4.base-search-card__subtitle')
+                        loc     = await card.query_selector('.job-card-container__metadata-item, .job-search-card__location, .base-search-card__metadata span')
+                        link    = await card.query_selector('a[href*="/jobs/view/"], a[href*="jobs/view"], a.base-card__full-link, a[href*="/jobs/"]')
+
                         title_text   = (await title.inner_text()).strip()   if title   else ''
                         company_text = (await company.inner_text()).strip() if company else ''
                         loc_text     = (await loc.inner_text()).strip()     if loc     else ''
                         url          = await link.get_attribute('href')     if link    else ''
+
                         if title_text and url:
                             if url.startswith('/'):
                                 url = 'https://www.linkedin.com' + url
@@ -314,6 +337,26 @@ Pre-written answers: {custom}""".strip()
                             jobs.append({'title': title_text, 'company': company_text, 'location': loc_text, 'url': url, 'snippet': '', 'board': 'linkedin'})
                     except Exception:
                         continue
+
+                # If DOM selectors found nothing, try extracting all links with /jobs/view/
+                if not jobs:
+                    try:
+                        links = await page.query_selector_all('a[href*="/jobs/view/"]')
+                        seen = set()
+                        for link in links[:20]:
+                            try:
+                                url = await link.get_attribute('href') or ''
+                                text = (await link.inner_text()).strip()
+                                if url.startswith('/'):
+                                    url = 'https://www.linkedin.com' + url
+                                url = url.split('?')[0]
+                                if url not in seen and text and len(text) > 3:
+                                    seen.add(url)
+                                    jobs.append({'title': text, 'company': '', 'location': '', 'url': url, 'snippet': '', 'board': 'linkedin'})
+                            except Exception:
+                                continue
+                    except Exception:
+                        pass
             elif board == "tokyodev":
                 cards = await page.query_selector_all('article, .job-listing, [class*="job"]')
                 for card in cards[:15]:
@@ -690,9 +733,11 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     loc = urllib.parse.quote_plus(location)
 
                     if board == 'linkedin':
-                        url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r604800&sortBy=DD"
                         if logged_in:
-                            url += "&f_LF=f_AL"
+                            url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r604800&f_LF=f_AL&sortBy=DD"
+                        else:
+                            # Guest search uses a different URL pattern
+                            url = f"https://www.linkedin.com/jobs/search?keywords={q}&location={loc}&trk=public_jobs_jobs-search-bar_search-submit&position=1&pageNum=0"
                     elif board == 'tokyodev':
                         url = f"https://www.tokyodev.com/jobs?q={q}"
                     else:
@@ -708,8 +753,11 @@ and upload_resume if there's a file upload. When all fields are filled, call for
 
                     # Smooth scroll to load more jobs (visible to user)
                     session.emit({"type": "action", "message": "Browsing listings..."})
-                    await self._smooth_scroll(page, 1800, steps=6)
-                    await asyncio.sleep(0.5)
+                    await self._smooth_scroll(page, 2400, steps=8)
+                    await asyncio.sleep(1)
+                    # Scroll back up slightly so we can see the top results
+                    await page.evaluate("window.scrollTo({ top: 0, behavior: 'smooth' })")
+                    await asyncio.sleep(0.8)
 
                     # Extract jobs
                     raw_jobs = await self._extract_jobs_from_page(page, board)
