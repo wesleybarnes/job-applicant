@@ -357,6 +357,54 @@ Pre-written answers: {custom}""".strip()
                                 continue
                     except Exception:
                         pass
+            elif board == "indeed":
+                # Indeed job cards
+                card_sels = ['.job_seen_beacon', '.jobsearch-ResultsList > li', '.result', '[data-jk]', '.tapItem']
+                cards = []
+                for sel in card_sels:
+                    cards = await page.query_selector_all(sel)
+                    if len(cards) > 2:
+                        break
+                for card in cards[:20]:
+                    try:
+                        title_el = await card.query_selector('h2.jobTitle a, .jobTitle a, h2 a, a[data-jk]')
+                        company_el = await card.query_selector('[data-testid="company-name"], .companyName, .company')
+                        loc_el = await card.query_selector('[data-testid="text-location"], .companyLocation, .location')
+                        title_text = (await title_el.inner_text()).strip() if title_el else ''
+                        company_text = (await company_el.inner_text()).strip() if company_el else ''
+                        loc_text = (await loc_el.inner_text()).strip() if loc_el else ''
+                        href = await title_el.get_attribute('href') if title_el else ''
+                        if title_text and href:
+                            if href.startswith('/'):
+                                href = 'https://www.indeed.com' + href
+                            jobs.append({'title': title_text, 'company': company_text, 'location': loc_text, 'url': href.split('&')[0], 'snippet': '', 'board': 'indeed'})
+                    except Exception:
+                        continue
+
+            elif board == "google_jobs":
+                # Google Jobs uses a special widget — extract from the list items
+                card_sels = ['li.iFjolb', '[data-ved] .PwjeAc', '.gws-plugins-horizon-jobs__tl-lif']
+                cards = []
+                for sel in card_sels:
+                    cards = await page.query_selector_all(sel)
+                    if len(cards) > 1:
+                        break
+                for card in cards[:15]:
+                    try:
+                        title_el = await card.query_selector('.BjJfJf, .sH3zle, [role="heading"]')
+                        company_el = await card.query_selector('.vNEEBe, .nJlQNd')
+                        loc_el = await card.query_selector('.Qk80Jf, .pwO8Gc')
+                        title_text = (await title_el.inner_text()).strip() if title_el else ''
+                        company_text = (await company_el.inner_text()).strip() if company_el else ''
+                        loc_text = (await loc_el.inner_text()).strip() if loc_el else ''
+                        # Google Jobs doesn't have direct links — use Google search URL
+                        if title_text:
+                            import urllib.parse as up
+                            search_url = f"https://www.google.com/search?q={up.quote_plus(title_text + ' ' + company_text + ' apply')}"
+                            jobs.append({'title': title_text, 'company': company_text, 'location': loc_text, 'url': search_url, 'snippet': '', 'board': 'google_jobs'})
+                    except Exception:
+                        continue
+
             elif board == "tokyodev":
                 cards = await page.query_selector_all('article, .job-listing, [class*="job"]')
                 for card in cards[:15]:
@@ -704,15 +752,19 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                 if session._stopped:
                     return
 
-                # ── Phase 2: Navigate to job boards ──────────────────────
-                boards = []
-                if logged_in or user.get('target_locations'):
-                    boards.append('linkedin')
+                # ── Phase 2: Build board list based on user profile ──────
+                boards = ['linkedin']  # always start with LinkedIn
                 locs = ' '.join(user.get('target_locations') or []).lower()
+                roles_str = ' '.join(user.get('target_roles') or []).lower()
+                # Add Indeed for broader search
+                boards.append('indeed')
+                # Add Google Jobs as a meta-aggregator
+                boards.append('google_jobs')
+                # Japan-specific boards
                 if 'japan' in locs or 'tokyo' in locs:
-                    boards.extend(['tokyodev'])
-                if not boards:
-                    boards = ['linkedin']
+                    boards.append('tokyodev')
+
+                session.emit({"type": "thinking", "message": f"Planning hunt strategy: searching {len(boards)} job boards for '{', '.join(user.get('target_roles') or ['jobs'])}' in '{', '.join(user.get('target_locations') or ['your area'])}'. Will evaluate each listing against your profile and apply to strong matches."})
 
                 total_evaluated = 0
                 total_applied   = 0
@@ -736,14 +788,18 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         if logged_in:
                             url = f"https://www.linkedin.com/jobs/search/?keywords={q}&location={loc}&f_TPR=r604800&f_LF=f_AL&sortBy=DD"
                         else:
-                            # Guest search uses a different URL pattern
                             url = f"https://www.linkedin.com/jobs/search?keywords={q}&location={loc}&trk=public_jobs_jobs-search-bar_search-submit&position=1&pageNum=0"
+                    elif board == 'indeed':
+                        url = f"https://www.indeed.com/jobs?q={q}&l={loc}&sort=date&fromage=7"
+                    elif board == 'google_jobs':
+                        url = f"https://www.google.com/search?q={q}+jobs+{loc}&ibp=htl;jobs"
                     elif board == 'tokyodev':
                         url = f"https://www.tokyodev.com/jobs?q={q}"
                     else:
-                        url = f"https://www.linkedin.com/jobs/search/?keywords={q}&sortBy=DD"
+                        url = f"https://www.google.com/search?q={q}+jobs+{loc}&ibp=htl;jobs"
 
-                    session.emit({"type": "action", "message": f"Searching {board.title()} for '{query}' in '{location}'..."})
+                    board_display = {'linkedin': 'LinkedIn', 'indeed': 'Indeed', 'google_jobs': 'Google Jobs', 'tokyodev': 'TokyoDev'}.get(board, board.title())
+                    session.emit({"type": "action", "message": f"Opening {board_display} — searching for '{query}' in '{location}'"})
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
                         await asyncio.sleep(2)
@@ -752,33 +808,36 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         continue
 
                     # Smooth scroll to load more jobs (visible to user)
-                    session.emit({"type": "action", "message": "Browsing listings..."})
+                    session.emit({"type": "action", "message": f"Scrolling through {board_display} results..."})
                     await self._smooth_scroll(page, 2400, steps=8)
                     await asyncio.sleep(1)
-                    # Scroll back up slightly so we can see the top results
                     await page.evaluate("window.scrollTo({ top: 0, behavior: 'smooth' })")
                     await asyncio.sleep(0.8)
 
-                    # Extract jobs
+                    # Extract jobs from the page
                     raw_jobs = await self._extract_jobs_from_page(page, board)
-                    session.emit({"type": "action", "message": f"Found {len(raw_jobs)} listings"})
-
                     new_jobs = [j for j in raw_jobs if j.get('url') and j['url'] not in session.seen_urls]
+
                     if not new_jobs:
-                        session.emit({"type": "action", "message": "All listings already seen — moving on"})
+                        session.emit({"type": "thinking", "message": f"No new listings found on {board_display} — all {len(raw_jobs)} jobs already seen this session. Moving to next board."})
                         continue
 
+                    session.emit({"type": "thinking", "message": f"Found {len(new_jobs)} new listings on {board_display}. Analyzing each one against your profile — looking for roles matching {', '.join(user.get('target_roles') or ['your targets'])} with the right skills and location fit."})
+
                     # ── Phase 3: Score jobs with Haiku ───────────────────
-                    session.emit({"type": "thinking", "message": f"Evaluating {len(new_jobs)} jobs..."})
                     BATCH = 10
                     for i in range(0, len(new_jobs), BATCH):
                         if session._stopped:
                             break
-                        await self._batch_score_jobs(new_jobs[i:i+BATCH], user)
+                        batch = new_jobs[i:i+BATCH]
+                        session.emit({"type": "action", "message": f"Evaluating batch {i//BATCH + 1}: {len(batch)} jobs..."})
+                        await self._batch_score_jobs(batch, user)
 
                     new_jobs.sort(key=lambda j: j.get('score', 0), reverse=True)
 
-                    # Show decisions to user
+                    # Show decisions with reasoning
+                    apply_count = 0
+                    skip_count = 0
                     for job in new_jobs:
                         score    = job.get('score', 0)
                         decision = 'apply' if score >= 70 else 'skip'
@@ -788,6 +847,9 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             _persist_seen_url(session, url, db_session_factory)
                         if decision == 'apply':
                             session.jobs_found += 1
+                            apply_count += 1
+                        else:
+                            skip_count += 1
                         session.emit({
                             "type":       "job_decision",
                             "decision":   decision,
@@ -799,6 +861,8 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             "reason":     job.get('reason', ''),
                         })
                         total_evaluated += 1
+
+                    session.emit({"type": "thinking", "message": f"Analysis complete: {apply_count} strong matches to apply to, {skip_count} skipped (below 70% fit). {'Proceeding to apply!' if apply_count > 0 else 'No strong matches on this board — will try next one.'}"})
 
                     # ── Phase 4: Apply to qualifying jobs ────────────────
                     apply_jobs = [j for j in new_jobs if j.get('score', 0) >= 70]
@@ -817,46 +881,78 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             continue
 
                         # Navigate to job page (user sees the listing)
-                        session.emit({"type": "action", "message": f"Opening: {job_title} at {company}"})
+                        score = job.get('score', 0)
+                        reason = job.get('reason', '')
+                        session.emit({"type": "thinking", "message": f"Opening {job_title} at {company} (score: {score}%). {reason}"})
                         try:
                             await page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
-                            await asyncio.sleep(2)  # Let user read the job
+                            await asyncio.sleep(2)
                         except Exception as e:
-                            session.emit({"type": "action", "message": f"Could not open job: {str(e)[:50]}"})
+                            session.emit({"type": "action", "message": f"Could not open job page — {str(e)[:50]}"})
                             continue
 
-                        # Scroll down to read the listing (visible)
+                        # Scroll to read the listing (visible to user)
+                        session.emit({"type": "action", "message": f"Reading job description..."})
                         await self._smooth_scroll(page, 400, steps=3)
-                        await asyncio.sleep(0.5)
-                        # Scroll back up to find Apply button
+                        await asyncio.sleep(0.8)
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(0.5)
 
-                        # Find and click Easy Apply
-                        easy_apply_clicked = False
+                        # Find and click Apply — try multiple strategies
+                        apply_clicked = False
+                        # Strategy 1: Easy Apply / direct Apply button
                         for sel in [
                             'button:has-text("Easy Apply")',
+                            'button:has-text("Apply now")',
                             'button:has-text("Apply")',
                             '.jobs-apply-button',
                             '[aria-label*="Easy Apply"]',
+                            '[aria-label*="Apply"]',
+                            'a:has-text("Apply now")',
+                            'a:has-text("Apply on company")',
+                            'a:has-text("Apply")',
                         ]:
                             try:
                                 el = page.locator(sel).first
                                 if await el.count() > 0 and await el.is_visible():
+                                    session.emit({"type": "action", "message": f"Clicking apply button..."})
                                     await self._click_element(page, session, el)
                                     await asyncio.sleep(1.5)
-                                    easy_apply_clicked = True
-                                    session.emit({"type": "action", "message": "Opened application form"})
+                                    apply_clicked = True
                                     break
                             except Exception:
                                 continue
 
-                        if not easy_apply_clicked:
-                            session.emit({"type": "action", "message": f"No apply button found — skipping"})
+                        # Strategy 2: If no button, look for external application links
+                        if not apply_clicked:
+                            session.emit({"type": "thinking", "message": f"No direct apply button found. Looking for external application link..."})
+                            for sel in [
+                                'a[href*="greenhouse"]', 'a[href*="lever.co"]',
+                                'a[href*="workday"]', 'a[href*="jobs.ashby"]',
+                                'a[href*="careers"]', 'a[href*="apply"]',
+                                'a[href*="icims"]', 'a[href*="taleo"]',
+                            ]:
+                                try:
+                                    el = page.locator(sel).first
+                                    if await el.count() > 0:
+                                        ext_url = await el.get_attribute('href')
+                                        if ext_url:
+                                            session.emit({"type": "action", "message": f"Found external application link — navigating..."})
+                                            await page.goto(ext_url, wait_until="domcontentloaded", timeout=15000)
+                                            await asyncio.sleep(2)
+                                            apply_clicked = True
+                                            break
+                                except Exception:
+                                    continue
+
+                        if not apply_clicked:
+                            session.emit({"type": "thinking", "message": f"No application method found for {job_title} at {company}. This might be a listing-only page. Moving to next job."})
                             continue
 
+                        session.emit({"type": "action", "message": "Application form opened — AI is analyzing the fields..."})
+
                         # ── Opus fills the form (human-like, visible) ────
-                        session.emit({"type": "thinking", "message": "AI is reading the form..."})
+                        session.emit({"type": "thinking", "message": f"Filling application for {job_title}. Using your resume, skills ({', '.join((user.get('skills') or [])[:4])}), and pre-written answers to complete each field."})
                         fill_result = await self._opus_fill_form(
                             page, user, resume_path, session, job_title, company
                         )
@@ -864,11 +960,11 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         concerns = fill_result.get('concerns', [])
 
                         if filled:
-                            session.emit({"type": "action", "message": f"Filled: {', '.join(filled[:6])}"})
+                            session.emit({"type": "thinking", "message": f"Form filled successfully — completed {len(filled)} fields: {', '.join(filled[:6])}{'...' if len(filled) > 6 else ''}. {'⚠️ Concerns: ' + ', '.join(concerns) if concerns else 'Everything looks good.'}"})
 
                         # ── Confirm or auto-apply ────────────────────────
                         if session.auto_apply:
-                            session.emit({"type": "action", "message": f"Auto-submitting {job_title}..."})
+                            session.emit({"type": "thinking", "message": f"Auto-apply is enabled — submitting application to {company} now."})
                         else:
                             session.emit({
                                 "type":          "confirm_required",
@@ -905,9 +1001,17 @@ and upload_resume if there's a file upload. When all fields are filled, call for
 
                 # ── Wrap up ──────────────────────────────────────────────
                 if not session._stopped:
+                    boards_searched = len([b for b in boards if not session._stopped])
+                    summary = f"Hunt complete! Searched {boards_searched} job boards, evaluated {total_evaluated} listings, and submitted {session.jobs_applied} applications."
+                    if session.jobs_applied > 0:
+                        summary += f" Your applications are in — check your Applications page for status updates."
+                    elif total_evaluated > 0:
+                        summary += f" No strong matches met the 70% threshold this time. Try adjusting your target roles or locations for better results."
+                    else:
+                        summary += f" Could not extract listings from the boards searched. This can happen with guest access — try adding LinkedIn credentials for better results."
                     session.emit({
                         "type":        "complete",
-                        "message":     f"Hunt complete! Evaluated {total_evaluated} jobs, applied to {session.jobs_applied}.",
+                        "message":     summary,
                         "jobs_found":  session.jobs_found,
                         "jobs_applied": session.jobs_applied,
                     })
