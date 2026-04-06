@@ -41,8 +41,9 @@ class HuntSession:
         self.jobs_applied = 0
         self.cursor_x: Optional[int] = None
         self.cursor_y: Optional[int] = None
-        self.seen_urls: set  = seen_urls or set()
+        self.seen_urls: set   = seen_urls or set()
         self.auto_apply: bool = auto_apply
+        self.page             = None   # set once Playwright page is created
 
     def emit(self, event: dict):
         self.events.put_nowait(event)
@@ -496,6 +497,7 @@ Summary: {user.get('summary') or 'N/A'}
                 window.chrome = { runtime: {} };
             """)
             page = await context.new_page()
+            session.page = page   # expose for interactive control when paused
 
             screenshot_task = asyncio.create_task(self._screenshot_loop(page, session))
             resume_path = resume.get('file_path', '') if resume else ''

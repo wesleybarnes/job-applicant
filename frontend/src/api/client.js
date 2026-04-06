@@ -78,5 +78,6 @@ export const startHunt = (body = {}) => api.post('/hunt/start', body).then(r => 
 export const listHuntSessions = () => api.get('/hunt/sessions').then(r => r.data)
 export const pauseHunt = (id) => api.post(`/hunt/pause/${id}`).then(r => r.data)
 export const resumeHunt = (id, instruction) => api.post(`/hunt/resume/${id}`, { instruction }).then(r => r.data)
+export const interactWithHunt = (id, action) => api.post(`/hunt/interact/${id}`, action).then(r => r.data)
 
 export default api

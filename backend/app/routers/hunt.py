@@ -30,6 +30,14 @@ class ResumeRequest(BaseModel):
 class AnswerRequest(BaseModel):
     answer: str
 
+class InteractRequest(BaseModel):
+    type: str                      # "click" | "type" | "key" | "scroll"
+    x: Optional[float] = None     # viewport coords (0-1280)
+    y: Optional[float] = None     # viewport coords (0-900)
+    text: Optional[str] = None    # for "type"
+    key: Optional[str] = None     # for "key" e.g. "Enter", "Backspace"
+    delta_y: Optional[float] = None  # for "scroll"
+
 
 @router.post("/start")
 async def start_hunt(
@@ -228,6 +236,35 @@ async def resume_hunt(hunt_id: int, body: ResumeRequest = None):
         raise HTTPException(status_code=404, detail="No active hunt session")
     session.resume((body or ResumeRequest()).instruction)
     return {"status": "resumed"}
+
+
+@router.post("/interact/{hunt_id}")
+async def interact_with_hunt(hunt_id: int, body: InteractRequest):
+    """Forward mouse/keyboard input to the paused Playwright browser."""
+    session = get_hunt_session(hunt_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="No active hunt session")
+    if not session._paused:
+        raise HTTPException(status_code=409, detail="Session is not paused")
+    page = session.page
+    if not page:
+        raise HTTPException(status_code=503, detail="Browser page not ready")
+
+    try:
+        if body.type == "click" and body.x is not None and body.y is not None:
+            await page.mouse.click(body.x, body.y)
+            session.cursor_x = int(body.x)
+            session.cursor_y = int(body.y)
+        elif body.type == "type" and body.text:
+            await page.keyboard.type(body.text)
+        elif body.type == "key" and body.key:
+            await page.keyboard.press(body.key)
+        elif body.type == "scroll" and body.x is not None and body.y is not None:
+            await page.mouse.wheel(0, body.delta_y or 300)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"status": "ok"}
 
 
 @router.post("/stop/{hunt_id}")
