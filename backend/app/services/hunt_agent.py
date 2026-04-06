@@ -862,7 +862,24 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         })
                         total_evaluated += 1
 
-                    session.emit({"type": "thinking", "message": f"Analysis complete: {apply_count} strong matches to apply to, {skip_count} skipped (below 70% fit). {'Proceeding to apply!' if apply_count > 0 else 'No strong matches on this board — will try next one.'}"})
+                    # Build a rich reasoning summary like a recruiter would
+                    user_name = (user.get('full_name') or '').split()[0] or 'you'
+                    yrs = user.get('years_experience') or 'N/A'
+                    lines = []
+                    for j in new_jobs[:8]:  # show top 8
+                        s = j.get('score', 0)
+                        t = j.get('title', '?')
+                        c = j.get('company', '?')
+                        r = j.get('reason', '')
+                        tag = '🟢 HIGH MATCH' if s >= 80 else '🟡 MODERATE' if s >= 70 else '⚪ LOW'
+                        lines.append(f"• **{c} — {t}** ({s}%) {tag}. {r}")
+
+                    reasoning = f"Here's what I found for {user_name} on {board_display}:\n\n" + "\n".join(lines)
+                    if apply_count > 0:
+                        reasoning += f"\n\n→ {apply_count} strong matches — applying now. {user_name} has {yrs} years of experience so I'll prioritize roles that fit that level."
+                    else:
+                        reasoning += f"\n\n→ No jobs above 70% match threshold on this board. Moving to next source."
+                    session.emit({"type": "thinking", "message": reasoning})
 
                     # ── Phase 4: Apply to qualifying jobs ────────────────
                     apply_jobs = [j for j in new_jobs if j.get('score', 0) >= 70]
