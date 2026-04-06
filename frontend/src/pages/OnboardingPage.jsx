@@ -17,8 +17,8 @@ const WORK_AUTH_OPTS    = ["US Citizen", "Green Card", "H1-B", "OPT/CPT", "TN Vi
 
 function Logo() {
   return (
-    <svg width="32" height="32" viewBox="0 0 36 36" fill="none">
-      <rect width="36" height="36" rx="10" fill="#1877F2"/>
+    <svg width="28" height="28" viewBox="0 0 36 36" fill="none">
+      <rect width="36" height="36" rx="10" fill="#18181B"/>
       <path d="M11 25l5-14 5 14M13.5 19.5h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
       <circle cx="26" cy="11" r="3" fill="white" opacity="0.85"/>
     </svg>
@@ -68,11 +68,11 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
             placeholder={placeholder}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addToList(field, val); setVal('') } }}
           />
-          <button type="button" className="btn-secondary px-3" onClick={() => { addToList(field, val); setVal('') }}>Add</button>
+          <button type="button" className="btn-secondary px-4" onClick={() => { addToList(field, val); setVal('') }}>Add</button>
         </div>
         <div className="flex flex-wrap gap-1.5">
           {form[field].map(v => (
-            <span key={v} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-pill bg-brand-50 text-brand-700 text-xs font-medium">
+            <span key={v} className="inline-flex items-center gap-1 px-3 py-1 rounded-pill bg-surface-hover text-ink-primary text-xs font-medium border border-surface-border">
               {v}
               <button onClick={() => removeFromList(field, v)} className="hover:text-red-500 ml-0.5">
                 <X className="w-3 h-3" />
@@ -109,9 +109,9 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
   const canProceed = () => step === 1 ? (form.full_name && form.email) : true
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#F0F2F5' }}>
+    <div className="min-h-screen flex flex-col bg-white">
       {/* Nav */}
-      <header className="bg-white border-b border-surface-border px-6 py-3.5">
+      <header className="bg-white border-b border-surface-border px-6 py-4">
         <div className="max-w-xl mx-auto flex items-center gap-2.5">
           <Logo />
           <span className="font-bold text-lg text-ink-primary tracking-tight">Envia</span>
@@ -122,34 +122,34 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
         <div className="w-full max-w-xl">
 
           {/* Step progress */}
-          <div className="mb-6">
-            <div className="flex items-center mb-4">
+          <div className="mb-8">
+            <div className="flex items-center mb-5">
               {STEPS.map((s, i) => (
                 <React.Fragment key={s.id}>
                   <div className="flex flex-col items-center">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                      step > s.id  ? 'bg-brand-500 border-brand-500 text-white' :
-                      step === s.id ? 'border-brand-500 text-brand-500 bg-white' :
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                      step > s.id  ? 'bg-ink-primary border-ink-primary text-white' :
+                      step === s.id ? 'border-ink-primary text-ink-primary bg-white' :
                       'border-surface-border text-ink-tertiary bg-white'
                     }`}>
                       {step > s.id ? <Check className="w-3.5 h-3.5" /> : s.id}
                     </div>
                   </div>
                   {i < STEPS.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-1 transition-colors ${step > s.id ? 'bg-brand-500' : 'bg-surface-border'}`} />
+                    <div className={`flex-1 h-0.5 mx-1.5 rounded transition-colors ${step > s.id ? 'bg-ink-primary' : 'bg-surface-border'}`} />
                   )}
                 </React.Fragment>
               ))}
             </div>
             <div className="text-center">
-              <h2 className="font-bold text-xl text-ink-primary">{STEPS[step - 1].title}</h2>
-              <p className="text-sm text-ink-secondary mt-0.5">{STEPS[step - 1].desc}</p>
+              <h2 className="font-bold text-xl text-ink-primary tracking-tight">{STEPS[step - 1].title}</h2>
+              <p className="text-sm text-ink-secondary mt-1">{STEPS[step - 1].desc}</p>
             </div>
           </div>
 
-          <div className="card p-7">
+          <div className="card p-8">
             {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-100">{error}</div>
+              <div className="mb-5 p-3.5 bg-red-50 text-red-700 rounded-xl text-sm border border-red-100">{error}</div>
             )}
 
             {/* Step 1: Basic Info */}
@@ -188,8 +188,8 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
                       <button key={opt} type="button" onClick={() => set('remote_preference', opt)}
                         className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
                           form.remote_preference === opt
-                            ? 'bg-brand-500 text-white border-brand-500'
-                            : 'bg-white text-ink-secondary border-surface-border hover:border-brand-300'
+                            ? 'bg-ink-primary text-white border-ink-primary'
+                            : 'bg-white text-ink-secondary border-surface-border hover:border-ink-tertiary'
                         }`}>{opt}</button>
                     ))}
                   </div>
@@ -208,8 +208,8 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
                       <button key={opt} type="button" onClick={() => set('availability', opt)}
                         className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
                           form.availability === opt
-                            ? 'bg-brand-500 text-white border-brand-500'
-                            : 'bg-white text-ink-secondary border-surface-border hover:border-brand-300'
+                            ? 'bg-ink-primary text-white border-ink-primary'
+                            : 'bg-white text-ink-secondary border-surface-border hover:border-ink-tertiary'
                         }`}>{opt}</button>
                     ))}
                   </div>
@@ -252,10 +252,10 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
               <div className="space-y-4">
                 <p className="text-sm text-ink-secondary">Upload your resume so the AI can tailor cover letters and fill out applications on your behalf.</p>
                 <label
-                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-10 cursor-pointer transition-colors ${
+                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-2xl p-12 cursor-pointer transition-all ${
                     dragOver ? 'border-brand-400 bg-brand-50' :
-                    resumeFile ? 'border-brand-300 bg-brand-50' :
-                    'border-surface-border hover:border-brand-300 hover:bg-brand-50/40'
+                    resumeFile ? 'border-brand-400 bg-brand-50' :
+                    'border-surface-border hover:border-ink-tertiary hover:bg-surface-hover'
                   }`}
                   onDragOver={e => { e.preventDefault(); setDragOver(true) }}
                   onDragLeave={() => setDragOver(false)}
@@ -264,7 +264,7 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
                   <Upload className={`w-10 h-10 mb-3 ${resumeFile ? 'text-brand-500' : 'text-ink-tertiary'}`} />
                   {resumeFile ? (
                     <>
-                      <span className="font-semibold text-brand-700">{resumeFile.name}</span>
+                      <span className="font-semibold text-ink-primary">{resumeFile.name}</span>
                       <span className="text-xs text-ink-tertiary mt-1">{(resumeFile.size / 1024).toFixed(0)} KB</span>
                     </>
                   ) : (
@@ -308,11 +308,11 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
               {step < STEPS.length ? (
-                <button type="button" onClick={() => setStep(s => s + 1)} disabled={!canProceed()} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+                <button type="button" onClick={() => setStep(s => s + 1)} disabled={!canProceed()} className="btn-primary flex items-center gap-2 disabled:opacity-40">
                   Continue <ChevronRight className="w-4 h-4" />
                 </button>
               ) : (
-                <button type="button" onClick={handleSubmit} disabled={loading || !canProceed()} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+                <button type="button" onClick={handleSubmit} disabled={loading || !canProceed()} className="btn-primary flex items-center gap-2 disabled:opacity-40">
                   {loading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Setting up...</> : <><Sparkles className="w-4 h-4" />Launch Dashboard</>}
                 </button>
               )}

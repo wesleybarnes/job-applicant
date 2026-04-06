@@ -58,19 +58,19 @@ export default function JobsPage() {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="mb-7">
-        <h1 className="text-2xl font-bold text-ink-primary">Find Jobs</h1>
-        <p className="text-ink-secondary mt-1 text-sm">Search listings and add them to your application queue.</p>
+    <div className="p-8 max-w-5xl mx-auto animate-fade-in">
+      <div className="mb-8">
+        <h1 className="text-title text-ink-primary">Find Jobs</h1>
+        <p className="text-ink-secondary mt-1.5 text-sm">Search listings and add them to your application queue.</p>
       </div>
 
       {/* Search bar */}
-      <div className="card p-4 mb-5">
+      <div className="card p-5 mb-6">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-tertiary" />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-tertiary" />
             <input
-              className="input pl-9"
+              className="input pl-10"
               placeholder="Job title, skills, keywords..."
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -78,16 +78,16 @@ export default function JobsPage() {
             />
           </div>
           <div className="relative sm:w-52">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-tertiary" />
+            <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-tertiary" />
             <input
-              className="input pl-9"
+              className="input pl-10"
               placeholder="City or Remote"
               value={location}
               onChange={e => setLocation(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleSearch()}
             />
           </div>
-          <button onClick={handleSearch} disabled={searching || !query} className="btn-primary whitespace-nowrap disabled:opacity-50">
+          <button onClick={handleSearch} disabled={searching || !query} className="btn-primary whitespace-nowrap disabled:opacity-40">
             {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
             Search
           </button>
@@ -96,12 +96,12 @@ export default function JobsPage() {
             {showManual ? 'Cancel' : 'Add Manually'}
           </button>
         </div>
-        {error && <p className="text-red-600 text-sm mt-3 bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+        {error && <p className="text-red-600 text-sm mt-3 bg-red-50 rounded-xl px-3 py-2">{error}</p>}
       </div>
 
       {/* Manual add */}
       {showManual && (
-        <div className="card p-5 mb-5 border border-brand-100">
+        <div className="card p-6 mb-6 border-brand-100">
           <h3 className="font-semibold text-ink-primary mb-4">Add Job Manually</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
             <input className="input" placeholder="Job Title *" value={manual.title} onChange={e => setManual(m => ({ ...m, title: e.target.value }))} />
@@ -109,7 +109,7 @@ export default function JobsPage() {
             <input className="input" placeholder="Location" value={manual.location} onChange={e => setManual(m => ({ ...m, location: e.target.value }))} />
             <input className="input" placeholder="Job URL" value={manual.url} onChange={e => setManual(m => ({ ...m, url: e.target.value }))} />
           </div>
-          <textarea className="input min-h-[80px] resize-y mb-3" placeholder="Paste job description here..." value={manual.description} onChange={e => setManual(m => ({ ...m, description: e.target.value }))} />
+          <textarea className="input min-h-[80px] resize-y mb-4" placeholder="Paste job description here..." value={manual.description} onChange={e => setManual(m => ({ ...m, description: e.target.value }))} />
           <div className="flex gap-2">
             <button onClick={handleManualAdd} disabled={!manual.title || !manual.company} className="btn-primary">Add Job</button>
             <button onClick={() => setShowManual(false)} className="btn-ghost">Cancel</button>
@@ -119,19 +119,19 @@ export default function JobsPage() {
 
       {/* Job list */}
       {loading ? (
-        <div className="flex justify-center py-16">
-          <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
+        <div className="flex justify-center py-20">
+          <Loader2 className="w-6 h-6 animate-spin text-ink-tertiary" />
         </div>
       ) : jobs.length === 0 ? (
-        <div className="card p-16 text-center">
-          <Building2 className="w-12 h-12 mx-auto mb-3 text-ink-tertiary opacity-40" />
+        <div className="card p-20 text-center">
+          <Building2 className="w-12 h-12 mx-auto mb-3 text-ink-tertiary opacity-30" />
           <p className="font-semibold text-ink-primary">No jobs yet</p>
           <p className="text-sm text-ink-secondary mt-1">Search above or add a job manually.</p>
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {jobs.map(job => (
-            <div key={job.id} className="card p-4 hover:shadow-card-hover transition-shadow">
+            <div key={job.id} className="card p-5 hover:shadow-card-hover transition-all duration-200">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -139,8 +139,8 @@ export default function JobsPage() {
                     {job.remote_type && (
                       <span className={`badge text-xs ${
                         job.remote_type === 'remote'
-                          ? 'bg-green-50 text-green-700'
-                          : 'bg-brand-50 text-brand-600'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : 'bg-blue-50 text-blue-600'
                       }`}>{job.remote_type}</span>
                     )}
                     {job.match_score >= 70 && (
@@ -168,22 +168,22 @@ export default function JobsPage() {
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {job.url && (
                     <a href={job.url} target="_blank" rel="noopener noreferrer"
-                       className="btn-ghost text-xs py-1.5 px-3 border border-surface-border">
+                       className="btn-ghost text-xs py-1.5 px-3 border border-surface-border rounded-xl">
                       <ExternalLink className="w-3 h-3" /> View
                     </a>
                   )}
                   <button
                     onClick={() => handleApply(job.id)}
                     disabled={addedJobs.has(job.id)}
-                    className={`text-xs py-1.5 px-3 rounded-lg font-semibold transition-colors ${
+                    className={`text-xs py-2 px-4 rounded-xl font-semibold transition-all ${
                       addedJobs.has(job.id)
-                        ? 'bg-green-50 text-green-700 cursor-default'
+                        ? 'bg-emerald-50 text-emerald-700 cursor-default'
                         : 'btn-primary'
                     }`}
                   >
                     {addedJobs.has(job.id) ? '✓ Added' : 'Add to Queue'}
                   </button>
-                  <button onClick={() => handleDelete(job.id)} className="p-1.5 text-ink-tertiary hover:text-red-500 rounded-lg transition-colors">
+                  <button onClick={() => handleDelete(job.id)} className="p-2 text-ink-tertiary hover:text-red-500 rounded-xl transition-colors">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>

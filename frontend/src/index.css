@@ -7,10 +7,11 @@
 @layer base {
   * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
-    background: #F0F2F5;
-    color: #1C1E21;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #FAFAFA;
+    color: #18181B;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 }
 
@@ -18,72 +19,73 @@
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
            font-semibold text-sm text-white
-           px-4 py-2 rounded-lg
-           transition-all duration-100 cursor-pointer select-none;
-    background: #1877F2;
+           px-5 py-2.5 rounded-xl
+           transition-all duration-150 cursor-pointer select-none;
+    background: #18181B;
   }
-  .btn-primary:hover  { background: #0C5FD0; }
-  .btn-primary:active { background: #0949A8; }
+  .btn-primary:hover  { background: #27272A; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+  .btn-primary:active { background: #09090B; transform: scale(0.98); }
   .btn-primary:disabled {
-    @apply opacity-50 cursor-not-allowed;
-    background: #1877F2;
+    @apply opacity-40 cursor-not-allowed;
+    background: #18181B;
+    box-shadow: none;
+    transform: none;
   }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
            font-semibold text-sm
-           px-4 py-2 rounded-lg border
-           transition-all duration-100 cursor-pointer select-none;
-    background: #E7F3FF;
-    color: #1877F2;
-    border-color: #E7F3FF;
+           px-5 py-2.5 rounded-xl border
+           transition-all duration-150 cursor-pointer select-none;
+    background: white;
+    color: #18181B;
+    border-color: #E4E4E7;
   }
-  .btn-secondary:hover { background: #D1E9FF; border-color: #D1E9FF; }
+  .btn-secondary:hover { background: #F4F4F5; border-color: #D4D4D8; }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2
-           font-semibold text-sm text-ink-secondary
-           px-4 py-2 rounded-lg
-           hover:bg-surface-hover
-           transition-all duration-100 cursor-pointer;
+           font-medium text-sm text-ink-secondary
+           px-4 py-2.5 rounded-xl
+           hover:bg-surface-hover hover:text-ink-primary
+           transition-all duration-150 cursor-pointer;
   }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2
            font-semibold text-sm text-white
-           px-4 py-2 rounded-lg
-           transition-all duration-100;
-    background: #FA3E3E;
+           px-5 py-2.5 rounded-xl
+           transition-all duration-150;
+    background: #EF4444;
   }
-  .btn-danger:hover { background: #E03030; }
+  .btn-danger:hover { background: #DC2626; }
 
-  /* Hunt-specific gold button maps to brand blue */
   .btn-gold {
     @apply inline-flex items-center justify-center gap-2
            font-semibold text-sm text-white
-           px-4 py-2 rounded-lg
-           transition-all duration-100;
-    background: #1877F2;
+           px-5 py-2.5 rounded-xl
+           transition-all duration-150;
+    background: #6366F1;
   }
-  .btn-gold:hover { background: #0C5FD0; }
+  .btn-gold:hover { background: #4F46E5; }
 
   .card {
-    @apply bg-white rounded-card;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    @apply bg-white rounded-card border border-surface-border;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06);
   }
 
   .input {
-    @apply w-full bg-white rounded-lg px-3 py-2.5 text-sm
+    @apply w-full bg-white rounded-xl px-4 py-2.5 text-sm
            text-ink-primary placeholder-ink-tertiary
            border border-surface-border
-           outline-none transition-all;
+           outline-none transition-all duration-150;
   }
   .input:focus {
-    border-color: #1877F2;
-    box-shadow: 0 0 0 2px rgba(24,119,242,0.2);
+    border-color: #6366F1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
   }
 
-  .label { @apply block text-sm font-semibold text-ink-primary mb-1.5; }
+  .label { @apply block text-sm font-medium text-ink-primary mb-1.5; }
 
   .badge {
     @apply inline-flex items-center gap-1 px-2.5 py-0.5
@@ -94,15 +96,15 @@
 /* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #BEC3C9; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #8A8D91; }
+::-webkit-scrollbar-thumb { background: #D4D4D8; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #A1A1AA; }
 
 @keyframes shimmer {
   0%   { background-position: 0% center; }
   100% { background-position: 200% center; }
 }
 .text-shimmer {
-  background: linear-gradient(90deg, #1877F2 0%, #47A7FF 50%, #1877F2 100%);
+  background: linear-gradient(90deg, #6366F1 0%, #A78BFA 50%, #6366F1 100%);
   background-size: 200% auto;
   animation: shimmer 3s linear infinite;
   -webkit-background-clip: text;

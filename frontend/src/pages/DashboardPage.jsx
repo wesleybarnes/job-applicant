@@ -5,11 +5,11 @@ import { listApplications, listJobs, getResumes, uploadResume, deleteResume } fr
 import { useAppUser } from '../App'
 
 const STATUS_COLORS = {
-  pending:       'bg-yellow-50 text-yellow-700',
+  pending:       'bg-zinc-100 text-zinc-600',
   in_progress:   'bg-brand-50 text-brand-600',
-  submitted:     'bg-green-50 text-green-700',
-  applied:       'bg-green-50 text-green-700',
-  interviewing:  'bg-purple-50 text-purple-700',
+  submitted:     'bg-emerald-50 text-emerald-700',
+  applied:       'bg-emerald-50 text-emerald-700',
+  interviewing:  'bg-violet-50 text-violet-700',
   rejected:      'bg-red-50 text-red-600',
   offer:         'bg-emerald-50 text-emerald-700',
 }
@@ -59,33 +59,33 @@ export default function DashboardPage() {
   }
 
   const stats = [
-    { label: 'Active Applications', value: applications.length,          icon: FileText,    color: '#1877F2' },
-    { label: 'In Progress',         value: applications.filter(a => a.status === 'in_progress').length, icon: TrendingUp, color: '#0C5FD0' },
-    { label: 'Submitted',           value: applications.filter(a => ['submitted','applied','interviewing'].includes(a.status)).length, icon: CheckCircle, color: '#42B883' },
-    { label: 'Interviews',          value: applications.filter(a => a.status === 'interviewing').length, icon: Briefcase, color: '#7B61FF' },
+    { label: 'Active Applications', value: applications.length,          icon: FileText,    bg: 'bg-blue-50',    iconColor: 'text-blue-500' },
+    { label: 'In Progress',         value: applications.filter(a => a.status === 'in_progress').length, icon: TrendingUp, bg: 'bg-amber-50',   iconColor: 'text-amber-500' },
+    { label: 'Submitted',           value: applications.filter(a => ['submitted','applied','interviewing'].includes(a.status)).length, icon: CheckCircle, bg: 'bg-emerald-50', iconColor: 'text-emerald-500' },
+    { label: 'Interviews',          value: applications.filter(a => a.status === 'interviewing').length, icon: Briefcase, bg: 'bg-violet-50',  iconColor: 'text-violet-500' },
   ]
 
   const firstName = user?.full_name?.split(' ')[0]
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
+    <div className="p-8 max-w-5xl mx-auto animate-fade-in">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-ink-primary">
+        <h1 className="text-title text-ink-primary">
           Good to see you{firstName ? `, ${firstName}` : ''}
         </h1>
-        <p className="text-ink-secondary mt-1 text-sm">Here's where your job search stands.</p>
+        <p className="text-ink-secondary mt-1.5 text-sm">Here's where your job search stands.</p>
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {stats.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="card p-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        {stats.map(({ label, value, icon: Icon, bg, iconColor }) => (
+          <div key={label} className="card p-5">
             <div className="flex items-center justify-between mb-3">
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: color + '15' }}>
-                <Icon className="w-4.5 h-4.5" style={{ color }} />
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center ${bg}`}>
+                <Icon className={`w-[18px] h-[18px] ${iconColor}`} />
               </div>
-              <span className="text-2xl font-bold text-ink-primary">{value}</span>
+              <span className="text-3xl font-bold text-ink-primary tabular-nums">{value}</span>
             </div>
             <p className="text-xs text-ink-tertiary font-medium">{label}</p>
           </div>
@@ -94,8 +94,8 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Resume Card */}
-        <div className="lg:col-span-1 card p-5">
-          <div className="flex items-center justify-between mb-4">
+        <div className="lg:col-span-1 card p-6">
+          <div className="flex items-center justify-between mb-5">
             <h2 className="font-semibold text-ink-primary flex items-center gap-2">
               <FileText className="w-4 h-4 text-brand-500" /> Resume
             </h2>
@@ -110,7 +110,7 @@ export default function DashboardPage() {
             <input ref={fileInputRef} type="file" accept=".pdf,.docx,.doc,.txt" className="hidden" onChange={handleFileChange} />
           </div>
 
-          {uploadError && <p className="text-xs text-red-600 mb-3 bg-red-50 rounded-lg px-3 py-2">{uploadError}</p>}
+          {uploadError && <p className="text-xs text-red-600 mb-3 bg-red-50 rounded-xl px-3 py-2">{uploadError}</p>}
 
           {resumes.length === 0 ? (
             <div
@@ -118,8 +118,8 @@ export default function DashboardPage() {
               onDragLeave={() => setDragOver(false)}
               onDrop={handleDrop}
               onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
-                dragOver ? 'border-brand-400 bg-brand-50' : 'border-surface-border hover:border-brand-300 hover:bg-brand-50/40'
+              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
+                dragOver ? 'border-brand-400 bg-brand-50' : 'border-surface-border hover:border-ink-tertiary hover:bg-surface-hover'
               }`}
             >
               <Upload className="w-7 h-7 mx-auto mb-2 text-ink-tertiary" />
@@ -129,9 +129,9 @@ export default function DashboardPage() {
           ) : (
             <div className="space-y-2">
               {resumes.map(r => (
-                <div key={r.id} className={`flex items-center justify-between p-3 rounded-xl ${r.is_active ? 'bg-brand-50 border border-brand-100' : 'bg-surface-hover'}`}>
+                <div key={r.id} className={`flex items-center justify-between p-3 rounded-xl transition-colors ${r.is_active ? 'bg-brand-50 border border-brand-100' : 'bg-surface-hover'}`}>
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${r.is_active ? 'bg-brand-500' : 'bg-surface-border'}`}>
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${r.is_active ? 'bg-brand-500' : 'bg-surface-border'}`}>
                       <FileText className={`w-3.5 h-3.5 ${r.is_active ? 'text-white' : 'text-ink-tertiary'}`} />
                     </div>
                     <div className="min-w-0">
@@ -139,7 +139,7 @@ export default function DashboardPage() {
                       <p className="text-xs text-ink-tertiary">{new Date(r.created_at).toLocaleDateString()}</p>
                     </div>
                   </div>
-                  <button onClick={() => handleDelete(r.id)} className="p-1 text-ink-tertiary hover:text-red-500 rounded transition-colors flex-shrink-0">
+                  <button onClick={() => handleDelete(r.id)} className="p-1.5 text-ink-tertiary hover:text-red-500 rounded-lg transition-colors flex-shrink-0">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -149,36 +149,36 @@ export default function DashboardPage() {
         </div>
 
         {/* Right column */}
-        <div className="lg:col-span-2 space-y-5">
+        <div className="lg:col-span-2 space-y-6">
           {/* Quick actions */}
-          <div className="card p-5">
+          <div className="card p-6">
             <h2 className="font-semibold text-ink-primary mb-4">Quick Actions</h2>
-            <div className="space-y-2.5">
+            <div className="space-y-2">
               {[
-                { to: '/hunt', icon: Crosshair, label: 'AI Hunt Jobs', sub: 'Autonomous browser applies while you watch', color: '#1877F2' },
-                { to: '/jobs', icon: Briefcase, label: 'Browse Jobs',   sub: 'Search listings and add to your queue',       color: '#0C5FD0' },
-                { to: '/applications', icon: Zap, label: 'Applications', sub: 'Track status, review cover letters',           color: '#7B61FF' },
-              ].map(({ to, icon: Icon, label, sub, color }) => (
+                { to: '/hunt', icon: Crosshair, label: 'AI Hunt Jobs', sub: 'Autonomous browser applies while you watch', bg: 'bg-amber-50', iconColor: 'text-amber-500' },
+                { to: '/jobs', icon: Briefcase, label: 'Browse Jobs',   sub: 'Search listings and add to your queue',       bg: 'bg-blue-50', iconColor: 'text-blue-500' },
+                { to: '/applications', icon: Zap, label: 'Applications', sub: 'Track status, review cover letters',           bg: 'bg-violet-50', iconColor: 'text-violet-500' },
+              ].map(({ to, icon: Icon, label, sub, bg, iconColor }) => (
                 <button
                   key={to}
                   onClick={() => navigate(to)}
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-hover transition-colors text-left group"
+                  className="w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl hover:bg-surface-hover transition-all duration-150 text-left group"
                 >
-                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: color + '15' }}>
-                    <Icon className="w-4.5 h-4.5" style={{ color }} />
+                  <div className={`w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0 ${bg}`}>
+                    <Icon className={`w-[18px] h-[18px] ${iconColor}`} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-ink-primary">{label}</p>
                     <p className="text-xs text-ink-tertiary">{sub}</p>
                   </div>
-                  <ArrowRight className="w-4 h-4 text-ink-tertiary group-hover:text-brand-500 transition-colors" />
+                  <ArrowRight className="w-4 h-4 text-ink-tertiary group-hover:text-ink-primary group-hover:translate-x-0.5 transition-all" />
                 </button>
               ))}
             </div>
           </div>
 
           {/* Recent applications */}
-          <div className="card p-5">
+          <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-ink-primary">Recent Applications</h2>
               <button onClick={() => navigate('/applications')} className="text-xs text-brand-500 hover:text-brand-600 font-semibold flex items-center gap-1">
@@ -186,18 +186,18 @@ export default function DashboardPage() {
               </button>
             </div>
             {loading ? (
-              <div className="flex justify-center py-6">
-                <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+              <div className="flex justify-center py-8">
+                <div className="w-5 h-5 border-2 border-ink-primary border-t-transparent rounded-full animate-spin" />
               </div>
             ) : applications.length === 0 ? (
-              <div className="text-center py-8 text-ink-tertiary">
-                <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+              <div className="text-center py-10 text-ink-tertiary">
+                <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
                 <p className="text-sm">No applications yet.</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {applications.slice(0, 6).map(app => (
-                  <div key={app.id} className="flex items-center justify-between py-2 px-3 rounded-xl hover:bg-surface-hover transition-colors">
+                  <div key={app.id} className="flex items-center justify-between py-2.5 px-3 rounded-xl hover:bg-surface-hover transition-colors">
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-ink-primary truncate">{app.job?.title || 'Unknown Job'}</p>
                       <p className="text-xs text-ink-tertiary truncate">{app.job?.company}</p>

@@ -15,8 +15,8 @@ const NAV = [
 
 function Logo() {
   return (
-    <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-      <rect width="36" height="36" rx="10" fill="#1877F2"/>
+    <svg width="32" height="32" viewBox="0 0 36 36" fill="none">
+      <rect width="36" height="36" rx="10" fill="#18181B"/>
       <path d="M11 25l5-14 5 14M13.5 19.5h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
       <circle cx="26" cy="11" r="3" fill="white" opacity="0.85"/>
     </svg>
@@ -31,11 +31,11 @@ export default function Layout() {
   const isAdmin = appUser?.is_admin
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#F0F2F5' }}>
+    <div className="min-h-screen flex bg-surface-bg">
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 flex flex-col bg-white" style={{ boxShadow: '1px 0 0 #E4E6EA' }}>
+      <aside className="w-[260px] flex-shrink-0 flex flex-col bg-white border-r border-surface-border">
         {/* Brand */}
-        <div className="px-4 py-5 flex items-center gap-3">
+        <div className="px-5 py-6 flex items-center gap-3">
           <Logo />
           <div>
             <p className="font-bold text-lg leading-none text-ink-primary tracking-tight">Envia</p>
@@ -44,13 +44,13 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 px-2 py-2 space-y-0.5">
+        <nav className="flex-1 px-3 py-1 space-y-1">
           {NAV.map(({ to, icon: Icon, label, badge }) => (
             <NavLink key={to} to={to} className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-100',
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
                 isActive
-                  ? 'bg-brand-50 text-brand-500'
+                  ? 'bg-surface-hover text-ink-primary font-semibold'
                   : 'text-ink-secondary hover:bg-surface-hover hover:text-ink-primary'
               )
             }>
@@ -68,17 +68,17 @@ export default function Layout() {
         </nav>
 
         {/* Bottom */}
-        <div className="px-3 py-4 space-y-2" style={{ borderTop: '1px solid #E4E6EA' }}>
+        <div className="px-4 py-5 space-y-3 border-t border-surface-border">
           {/* Credits */}
           {isAdmin ? (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-brand-50">
+            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-brand-50 border border-brand-100">
               <Crown className="w-4 h-4 text-brand-500 flex-shrink-0" />
-              <span className="text-sm font-semibold text-brand-600">Admin · Unlimited</span>
+              <span className="text-sm font-semibold text-brand-700">Admin · Unlimited</span>
             </div>
           ) : (
             <button
               onClick={() => setShowCredits(true)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-surface-hover hover:bg-surface-border transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-surface-hover hover:bg-surface-border transition-colors"
             >
               <div className="flex items-center gap-2">
                 <Zap className="w-4 h-4 text-brand-500" />
@@ -89,10 +89,10 @@ export default function Layout() {
           )}
 
           {/* User */}
-          <div className="flex items-center gap-3 px-1 py-1">
+          <div className="flex items-center gap-3 px-2 py-1">
             <UserButton afterSignOutUrl="/" />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-ink-primary truncate">{appUser?.full_name}</p>
+              <p className="text-sm font-medium text-ink-primary truncate">{appUser?.full_name}</p>
               <p className="text-xs text-ink-tertiary truncate">{appUser?.email}</p>
             </div>
           </div>

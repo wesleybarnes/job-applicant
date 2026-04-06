@@ -193,27 +193,27 @@ export default function HuntView({ huntId, onClose }) {
   }, [huntId])
 
   const statusCfg = {
-    connecting: { label: 'Connecting...', color: 'text-yellow-300', spin: true },
-    running:    { label: 'Hunting...',    color: 'text-blue-300',    spin: true },
-    paused:     { label: 'Paused',        color: 'text-amber-400',   spin: false },
-    confirm:    { label: 'Your Input',    color: 'text-amber-400',   spin: false },
+    connecting: { label: 'Connecting...', color: 'text-amber-400', spin: true },
+    running:    { label: 'Hunting...',    color: 'text-brand-400',  spin: true },
+    paused:     { label: 'Paused',        color: 'text-amber-400',  spin: false },
+    confirm:    { label: 'Your Input',    color: 'text-amber-400',  spin: false },
     done:       { label: 'Complete',      color: 'text-emerald-400', spin: false },
     error:      { label: 'Error',         color: 'text-red-400',     spin: false },
-    stopping:   { label: 'Stopping...',   color: 'text-red-300',     spin: true },
+    stopping:   { label: 'Stopping...',   color: 'text-red-400',     spin: true },
   }[status] || { label: status, color: 'text-white', spin: false }
 
   const isActive = !['done', 'error', 'stopping'].includes(status)
   const isPaused = status === 'paused'
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0a0618' }}>
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: '#0A0A0C' }}>
 
       {/* Top bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-white/10 flex-shrink-0"
-           style={{ background: 'linear-gradient(90deg, #120630, #1e0a4a)' }}>
+      <div className="flex items-center justify-between px-6 py-3.5 border-b border-zinc-800 flex-shrink-0"
+           style={{ background: '#111114' }}>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <Crosshair className="w-5 h-5 text-amber-400" />
+            <Crosshair className="w-5 h-5 text-brand-400" />
             <span className="font-bold text-white">Autonomous Hunt</span>
           </div>
           <div className={`flex items-center gap-1.5 text-sm font-medium ${statusCfg.color}`}>
@@ -221,16 +221,16 @@ export default function HuntView({ huntId, onClose }) {
             {statusCfg.label}
           </div>
           {isPaused && (
-            <div className="flex items-center gap-1 text-xs bg-white/10 rounded-lg overflow-hidden border border-white/15">
+            <div className="flex items-center gap-0.5 text-xs bg-zinc-800 rounded-xl overflow-hidden border border-zinc-700">
               <button
                 onClick={() => { setInteractMode('click'); setTimeout(() => hiddenKeyInputRef.current?.focus(), 50) }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${interactMode === 'click' ? 'bg-amber-500 text-white' : 'text-white/60 hover:text-white'}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${interactMode === 'click' ? 'bg-amber-500 text-white' : 'text-zinc-400 hover:text-white'}`}
               >
                 <MousePointer className="w-3 h-3" /> Click
               </button>
               <button
                 onClick={() => { setInteractMode('prompt'); setTimeout(() => instructionRef.current?.focus(), 50) }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${interactMode === 'prompt' ? 'bg-amber-500 text-white' : 'text-white/60 hover:text-white'}`}
+                className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${interactMode === 'prompt' ? 'bg-amber-500 text-white' : 'text-zinc-400 hover:text-white'}`}
               >
                 <MessageSquare className="w-3 h-3" /> Prompt
               </button>
@@ -240,13 +240,13 @@ export default function HuntView({ huntId, onClose }) {
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-blue-300">{stats.found} found</span>
+            <span className="text-zinc-400">{stats.found} found</span>
             <span className="text-emerald-400 font-semibold">{stats.applied} applied</span>
           </div>
 
           {status === 'running' && (
             <button onClick={handlePause}
-              className="flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-amber-300 px-3 py-1.5 rounded-xl font-semibold text-sm border border-white/15 transition-colors">
+              className="flex items-center gap-1.5 bg-zinc-800 hover:bg-zinc-700 text-amber-400 px-3 py-1.5 rounded-xl font-semibold text-sm border border-zinc-700 transition-colors">
               <Pause className="w-3.5 h-3.5" /> Pause
             </button>
           )}
@@ -259,7 +259,7 @@ export default function HuntView({ huntId, onClose }) {
           )}
           {!isActive && (
             <button onClick={onClose}
-              className="text-blue-300 hover:text-white text-sm px-4 py-1.5 rounded-xl hover:bg-white/10 transition-colors">
+              className="text-zinc-400 hover:text-white text-sm px-4 py-1.5 rounded-xl hover:bg-zinc-800 transition-colors">
               Close
             </button>
           )}
@@ -280,7 +280,7 @@ export default function HuntView({ huntId, onClose }) {
               style={{
                 display: 'block',
                 cursor: isPaused && interactMode === 'click' ? 'crosshair' : 'default',
-                outline: isPaused ? `2px solid ${isInteracting ? '#f59e0b' : 'rgba(245,158,11,0.4)'}` : 'none',
+                outline: isPaused ? `2px solid ${isInteracting ? '#f59e0b' : 'rgba(245,158,11,0.3)'}` : 'none',
                 outlineOffset: '-2px',
                 transition: 'outline-color 0.1s',
               }}
@@ -308,7 +308,7 @@ export default function HuntView({ huntId, onClose }) {
                   zIndex: 10,
                 }}>
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <path d="M4 4l7 18 3-7 7-3z" fill="rgba(245,158,11,0.9)" stroke="#f59e0b" strokeWidth="1.5"/>
+                  <path d="M4 4l7 18 3-7 7-3z" fill="rgba(99,102,241,0.9)" stroke="#6366F1" strokeWidth="1.5"/>
                 </svg>
               </div>
             )}
@@ -317,7 +317,7 @@ export default function HuntView({ huntId, onClose }) {
             {isPaused && interactMode === 'click' && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-pill text-xs font-semibold"
-                     style={{ background: 'rgba(0,0,0,0.7)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.3)' }}>
+                     style={{ background: 'rgba(0,0,0,0.8)', color: '#fbbf24', border: '1px solid rgba(245,158,11,0.2)' }}>
                   <MousePointer className="w-3 h-3" />
                   Click anywhere · Scroll to scroll · Switch to Prompt for AI instructions
                 </div>
@@ -328,9 +328,9 @@ export default function HuntView({ huntId, onClose }) {
             {!imgRef.current?.src && (
               <div className="absolute inset-0 flex items-center justify-center text-center pointer-events-none">
                 <div>
-                  <Crosshair className="w-20 h-20 text-blue-800 mx-auto mb-4" />
-                  <p className="text-blue-400 text-sm">Starting hunt...</p>
-                  <p className="text-blue-700 text-xs mt-1">Opening browser</p>
+                  <Crosshair className="w-20 h-20 text-zinc-800 mx-auto mb-4" />
+                  <p className="text-zinc-500 text-sm">Starting hunt...</p>
+                  <p className="text-zinc-700 text-xs mt-1">Opening browser</p>
                 </div>
               </div>
             )}
@@ -338,12 +338,12 @@ export default function HuntView({ huntId, onClose }) {
             {/* Final message overlay */}
             {finalMessage && (
               <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.85)' }}>
-                <div className="rounded-2xl px-12 py-10 text-center border border-white/10 max-w-sm" style={{ background: '#1a1230' }}>
+                <div className="rounded-2xl px-12 py-10 text-center border border-zinc-700/50 max-w-sm" style={{ background: '#18181B' }}>
                   {status === 'done'
                     ? <CheckCircle className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
                     : <XCircle    className="w-14 h-14 text-red-400     mx-auto mb-4" />}
                   <p className="font-bold text-white text-xl mb-2">{status === 'done' ? 'Hunt Complete!' : 'Hunt Stopped'}</p>
-                  <p className="text-blue-300 text-sm mb-4">{finalMessage}</p>
+                  <p className="text-zinc-400 text-sm mb-4">{finalMessage}</p>
                   <p className="text-emerald-400 font-semibold">{stats.applied} applications submitted</p>
                   <button onClick={onClose} className="mt-6 btn-primary text-sm px-6">Done</button>
                 </div>
@@ -353,18 +353,18 @@ export default function HuntView({ huntId, onClose }) {
 
           {/* ── Paused control bar (floats at bottom of screen) ──────────── */}
           {isPaused && (
-            <div className="flex-shrink-0 px-4 py-3 flex items-center gap-3 border-t border-white/10"
-                 style={{ background: 'rgba(10,6,24,0.95)', backdropFilter: 'blur(12px)' }}>
+            <div className="flex-shrink-0 px-4 py-3 flex items-center gap-3 border-t border-zinc-800"
+                 style={{ background: 'rgba(10,10,12,0.95)', backdropFilter: 'blur(12px)' }}>
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                 <span className="text-amber-400 text-xs font-bold uppercase tracking-wide">Paused</span>
               </div>
 
               {/* Mode label */}
-              <span className="text-white/30 text-xs">|</span>
+              <span className="text-zinc-600 text-xs">|</span>
               {interactMode === 'click'
-                ? <span className="text-white/50 text-xs">Clicking on screen · Switch to Prompt mode to give AI instructions</span>
-                : <span className="text-white/50 text-xs">Type a prompt for the AI, or switch to Click mode to interact directly</span>
+                ? <span className="text-zinc-500 text-xs">Clicking on screen · Switch to Prompt mode to give AI instructions</span>
+                : <span className="text-zinc-500 text-xs">Type a prompt for the AI, or switch to Click mode to interact directly</span>
               }
 
               <div className="flex-1" />
@@ -382,14 +382,14 @@ export default function HuntView({ huntId, onClose }) {
                   placeholder="Give the AI a new instruction (Enter to send)..."
                   rows={1}
                   className="flex-1 rounded-xl px-3 py-2 text-sm resize-none outline-none"
-                  style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', caretColor: '#fff', minHeight: 36, maxHeight: 80 }}
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', caretColor: '#fff', minHeight: 36, maxHeight: 80 }}
                 />
                 <button
                   onClick={handleResume}
                   className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm transition-colors flex-shrink-0"
                   style={{
-                    background: instruction.trim() ? '#1877F2' : 'rgba(255,255,255,0.1)',
-                    color: instruction.trim() ? '#fff' : 'rgba(255,255,255,0.4)',
+                    background: instruction.trim() ? '#6366F1' : 'rgba(255,255,255,0.08)',
+                    color: instruction.trim() ? '#fff' : 'rgba(255,255,255,0.3)',
                   }}
                 >
                   {instruction.trim() ? <><Send className="w-3.5 h-3.5" /> Send</> : <><Play className="w-3.5 h-3.5" /> Resume</>}
@@ -400,15 +400,15 @@ export default function HuntView({ huntId, onClose }) {
         </div>
 
         {/* Right panel */}
-        <div className="w-72 border-l border-white/10 flex flex-col" style={{ background: '#0f0a1e' }}>
-          <div className="flex border-b border-white/10">
+        <div className="w-72 border-l border-zinc-800 flex flex-col" style={{ background: '#0E0E11' }}>
+          <div className="flex border-b border-zinc-800">
             {[
               { id: 'decisions', label: 'Decisions', icon: ListChecks },
               { id: 'log',       label: 'Log',       icon: Brain },
             ].map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setTab(id)}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 text-xs font-semibold transition-colors ${
-                  tab === id ? 'text-amber-400 border-b-2 border-amber-400' : 'text-blue-400 hover:text-blue-200'
+                className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold transition-colors ${
+                  tab === id ? 'text-brand-400 border-b-2 border-brand-400' : 'text-zinc-500 hover:text-zinc-300'
                 }`}>
                 <Icon className="w-3.5 h-3.5" />{label}
               </button>
@@ -418,36 +418,36 @@ export default function HuntView({ huntId, onClose }) {
           <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
             {tab === 'decisions' ? (
               decisions.length === 0
-                ? <p className="text-blue-600 italic text-center mt-4">No decisions yet...</p>
+                ? <p className="text-zinc-600 italic text-center mt-4">No decisions yet...</p>
                 : [...decisions].reverse().map(d => (
                   <div key={d.id} className={`p-2.5 rounded-xl border ${
-                    d.decision === 'apply' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-white/5 bg-white/3'
+                    d.decision === 'apply' ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-800/30'
                   }`}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className={`font-semibold ${d.decision === 'apply' ? 'text-emerald-400' : 'text-blue-600'}`}>
+                      <span className={`font-semibold ${d.decision === 'apply' ? 'text-emerald-400' : 'text-zinc-600'}`}>
                         {d.decision === 'apply' ? '✓ Applying' : '✗ Skipping'}
                       </span>
                       {d.match_score > 0 && (
-                        <span className={`font-bold ${d.match_score >= 70 ? 'text-emerald-400' : 'text-blue-500'}`}>
+                        <span className={`font-bold ${d.match_score >= 70 ? 'text-emerald-400' : 'text-zinc-500'}`}>
                           {d.match_score}%
                         </span>
                       )}
                     </div>
                     <p className="text-white font-medium truncate">{d.title}</p>
-                    <p className="text-blue-400 truncate">{d.company}</p>
-                    {d.reason && <p className="text-blue-600 mt-1 leading-relaxed line-clamp-2">{d.reason}</p>}
+                    <p className="text-zinc-400 truncate">{d.company}</p>
+                    {d.reason && <p className="text-zinc-600 mt-1 leading-relaxed line-clamp-2">{d.reason}</p>}
                   </div>
                 ))
             ) : (
               log.length === 0
-                ? <p className="text-blue-600 italic text-center mt-4">Waiting for agent...</p>
+                ? <p className="text-zinc-600 italic text-center mt-4">Waiting for agent...</p>
                 : [...log].reverse().map(entry => (
                   <div key={entry.id} className={`flex gap-2 items-start ${
-                    entry.type === 'thinking'         ? 'text-blue-500 italic' :
+                    entry.type === 'thinking'         ? 'text-zinc-500 italic' :
                     entry.type === 'error'            ? 'text-red-400' :
                     entry.type === 'submitted'        ? 'text-emerald-400 font-semibold' :
                     entry.type === 'confirm_required' ? 'text-amber-400 font-semibold' :
-                    'text-blue-300'
+                    'text-zinc-400'
                   }`}>
                     <span className="flex-shrink-0 mt-0.5">
                       {entry.type === 'thinking' ? '💭' :
@@ -473,19 +473,19 @@ export default function HuntView({ huntId, onClose }) {
       {questionData && (
         <div className="fixed inset-0 z-[70] flex items-end justify-center p-4 pb-8"
              style={{ background: 'rgba(0,0,0,0.5)' }}>
-          <div className="rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-white/10"
-               style={{ background: '#1a2744' }}>
-            <div className="px-5 py-4 border-b border-white/10 flex items-center gap-2">
+          <div className="rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-zinc-700/50"
+               style={{ background: '#18181B' }}>
+            <div className="px-5 py-4 border-b border-zinc-700/50 flex items-center gap-2">
               <span className="text-lg">❓</span>
               <p className="font-semibold text-white text-sm">Agent needs your input</p>
             </div>
             <div className="p-5 space-y-4">
-              <p className="text-blue-100 text-sm leading-relaxed">{questionData.message}</p>
+              <p className="text-zinc-300 text-sm leading-relaxed">{questionData.message}</p>
               {questionData.options?.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {questionData.options.map((opt, i) => (
                     <button key={i} onClick={() => handleAnswerQuestion(opt)}
-                      className="px-3 py-1.5 bg-blue-500/20 hover:bg-blue-500/40 border border-blue-500/30 text-blue-200 rounded-xl text-sm font-medium transition-colors">
+                      className="px-3 py-1.5 bg-brand-500/15 hover:bg-brand-500/25 border border-brand-500/20 text-brand-300 rounded-xl text-sm font-medium transition-colors">
                       {opt}
                     </button>
                   ))}
@@ -498,7 +498,7 @@ export default function HuntView({ huntId, onClose }) {
                   onKeyDown={e => e.key === 'Enter' && questionAnswer && handleAnswerQuestion()}
                   placeholder="Type your answer..."
                   className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
-                  style={{ background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)', color: '#fff', caretColor: '#fff' }}
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
                   autoFocus
                 />
                 <button onClick={() => handleAnswerQuestion()} disabled={!questionAnswer}
@@ -506,7 +506,7 @@ export default function HuntView({ huntId, onClose }) {
                   Send
                 </button>
                 <button onClick={() => handleAnswerQuestion('Use your best judgment')}
-                  className="text-xs text-blue-400 hover:text-blue-200 px-3 transition-colors">
+                  className="text-xs text-zinc-400 hover:text-zinc-200 px-3 transition-colors">
                   Skip
                 </button>
               </div>
