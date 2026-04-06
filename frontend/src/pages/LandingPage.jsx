@@ -4,11 +4,11 @@ import { ArrowRight, Monitor, Upload, CheckCircle, Crosshair, Shield, Sparkles, 
 
 function Logo({ size = 32 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 36 36" fill="none">
-      <rect width="36" height="36" rx="10" fill="url(#lg)"/>
-      <path d="M11 25l5-14 5 14M13.5 19.5h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
-      <circle cx="26" cy="11" r="3" fill="white" opacity="0.85"/>
-      <defs><linearGradient id="lg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse"><stop stopColor="#06B6D4"/><stop offset="1" stopColor="#0891B2"/></linearGradient></defs>
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="url(#lg)"/>
+      <path d="M7 15.2L25 7L17.5 25L14.5 17.5L7 15.2Z" fill="white" opacity="0.95"/>
+      <path d="M14.5 17.5L25 7" stroke="white" strokeWidth="1" opacity="0.4"/>
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop stopColor="#06B6D4"/><stop offset="1" stopColor="#0E7490"/></linearGradient></defs>
     </svg>
   )
 }
