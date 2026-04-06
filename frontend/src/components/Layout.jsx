@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
-import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, FileText, Crosshair, Zap, Crown, Settings } from 'lucide-react'
+import { Outlet, NavLink } from 'react-router-dom'
+import { LayoutDashboard, Briefcase, FileText, Crosshair, Zap, Crown } from 'lucide-react'
 import { UserButton } from '@clerk/clerk-react'
 import { useAppUser } from '../App'
 import CreditsModal from './CreditsModal'
@@ -15,16 +15,11 @@ const NAV = [
 
 function Logo() {
   return (
-    <svg width="32" height="32" viewBox="0 0 36 36" fill="none">
-      <rect width="36" height="36" rx="10" fill="url(#sidebar-logo-grad)"/>
+    <svg width="30" height="30" viewBox="0 0 36 36" fill="none">
+      <rect width="36" height="36" rx="10" fill="url(#sl)"/>
       <path d="M11 25l5-14 5 14M13.5 19.5h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
       <circle cx="26" cy="11" r="3" fill="white" opacity="0.85"/>
-      <defs>
-        <linearGradient id="sidebar-logo-grad" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse">
-          <stop stopColor="#8B5CF6"/>
-          <stop offset="1" stopColor="#6D28D9"/>
-        </linearGradient>
-      </defs>
+      <defs><linearGradient id="sl" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse"><stop stopColor="#06B6D4"/><stop offset="1" stopColor="#0891B2"/></linearGradient></defs>
     </svg>
   )
 }
@@ -32,78 +27,54 @@ function Logo() {
 export default function Layout() {
   const { appUser } = useAppUser()
   const [showCredits, setShowCredits] = useState(false)
-
   const credits = appUser?.credits ?? 0
   const isAdmin = appUser?.is_admin
 
   return (
     <div className="min-h-screen flex bg-surface-bg">
-      {/* Sidebar */}
-      <aside className="w-[260px] flex-shrink-0 flex flex-col bg-white border-r border-surface-border">
-        {/* Brand */}
-        <div className="px-5 py-6 flex items-center gap-3">
+      <aside className="w-[240px] flex-shrink-0 flex flex-col border-r border-surface-border bg-surface-card">
+        <div className="px-5 py-5 flex items-center gap-2.5">
           <Logo />
-          <div>
-            <p className="font-bold text-lg leading-none text-ink-primary tracking-tight">Envia</p>
-            <p className="text-[11px] text-ink-tertiary mt-0.5 font-medium">AI Job Hunter</p>
-          </div>
+          <span className="font-bold text-lg leading-none text-ink-primary tracking-tight">Envia</span>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-1 space-y-1">
+        <nav className="flex-1 px-3 space-y-0.5">
           {NAV.map(({ to, icon: Icon, label, badge }) => (
             <NavLink key={to} to={to} className={({ isActive }) =>
               clsx(
-                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200',
+                'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150',
                 isActive
-                  ? 'bg-brand-50 text-brand-700 font-semibold shadow-sm'
+                  ? 'bg-brand-500/10 text-brand-400'
                   : 'text-ink-secondary hover:bg-surface-hover hover:text-ink-primary'
               )
             }>
               {({ isActive }) => (
                 <>
-                  <div className={clsx(
-                    'w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200',
-                    isActive
-                      ? 'bg-gradient-to-br from-brand-500 to-brand-700 shadow-sm shadow-brand-500/20'
-                      : 'bg-transparent'
-                  )}>
-                    <Icon className={clsx('w-[16px] h-[16px]', isActive ? 'text-white' : 'text-ink-tertiary')} />
-                  </div>
+                  <Icon className={clsx('w-[17px] h-[17px]', isActive ? 'text-brand-400' : 'text-ink-tertiary')} />
                   <span className="flex-1">{label}</span>
-                  {badge && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-gradient-to-r from-brand-500 to-brand-600 text-white shadow-sm shadow-brand-500/20">{badge}</span>
-                  )}
+                  {badge && <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-brand-500/20 text-brand-400">{badge}</span>}
                 </>
               )}
             </NavLink>
           ))}
         </nav>
 
-        {/* Bottom */}
-        <div className="px-4 py-5 space-y-3 border-t border-surface-border">
-          {/* Credits */}
+        <div className="px-3 py-4 space-y-3 border-t border-surface-border">
           {isAdmin ? (
-            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-gradient-to-r from-brand-50 to-purple-50 border border-brand-100">
-              <Crown className="w-4 h-4 text-brand-500 flex-shrink-0" />
-              <span className="text-sm font-semibold text-brand-700">Admin · Unlimited</span>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-500/10 border border-brand-500/20">
+              <Crown className="w-4 h-4 text-brand-400 flex-shrink-0" />
+              <span className="text-sm font-semibold text-brand-400">Admin</span>
             </div>
           ) : (
-            <button
-              onClick={() => setShowCredits(true)}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl bg-surface-hover hover:bg-surface-border transition-all duration-200 group"
-            >
+            <button onClick={() => setShowCredits(true)}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-surface-hover hover:bg-surface-border/50 transition-colors">
               <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-md bg-gradient-to-br from-brand-400 to-brand-600 flex items-center justify-center">
-                  <Zap className="w-3 h-3 text-white" />
-                </div>
-                <span className="text-sm font-semibold text-ink-primary">{credits} credits</span>
+                <Zap className="w-4 h-4 text-brand-400" />
+                <span className="text-sm font-semibold text-ink-primary">{credits}</span>
               </div>
-              <span className="text-xs text-brand-500 font-semibold group-hover:text-brand-600">+ Add</span>
+              <span className="text-xs text-brand-400 font-semibold">+ Add</span>
             </button>
           )}
-
-          {/* User */}
           <div className="flex items-center gap-3 px-2 py-1">
             <UserButton afterSignOutUrl="/" />
             <div className="min-w-0 flex-1">
@@ -114,11 +85,7 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Content */}
-      <main className="flex-1 overflow-auto">
-        <Outlet />
-      </main>
-
+      <main className="flex-1 overflow-auto"><Outlet /></main>
       {showCredits && <CreditsModal onClose={() => setShowCredits(false)} />}
     </div>
   )

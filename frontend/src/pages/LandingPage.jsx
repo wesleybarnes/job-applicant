@@ -8,7 +8,7 @@ function Logo({ size = 32 }) {
       <rect width="36" height="36" rx="10" fill="url(#lg)"/>
       <path d="M11 25l5-14 5 14M13.5 19.5h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
       <circle cx="26" cy="11" r="3" fill="white" opacity="0.85"/>
-      <defs><linearGradient id="lg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse"><stop stopColor="#8B5CF6"/><stop offset="1" stopColor="#6D28D9"/></linearGradient></defs>
+      <defs><linearGradient id="lg" x1="0" y1="0" x2="36" y2="36" gradientUnits="userSpaceOnUse"><stop stopColor="#06B6D4"/><stop offset="1" stopColor="#0891B2"/></linearGradient></defs>
     </svg>
   )
 }
@@ -68,7 +68,7 @@ function BrowserMockup() {
             <p className="text-xs text-zinc-500 mb-1">Filling: Years of experience</p>
             <div className="flex items-center gap-2">
               <div className="h-6 bg-brand-500/20 border border-brand-500/30 rounded px-2 flex items-center">
-                <span className="text-sm text-brand-300 font-mono">5</span>
+                <span className="text-sm text-brand-400 font-mono">5</span>
                 <span className="w-0.5 h-3.5 bg-brand-400 ml-0.5 animate-pulse" />
               </div>
             </div>
@@ -83,9 +83,9 @@ export default function LandingPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="min-h-screen bg-white overflow-hidden">
+    <div className="min-h-screen bg-surface-bg overflow-hidden">
       {/* ── Nav ──────────────────────────────────────────────────────── */}
-      <nav className="fixed top-0 inset-x-0 z-50 glass border-b border-white/50">
+      <nav className="fixed top-0 inset-x-0 z-50 glass border-b border-white/10">
         <div className="max-w-6xl mx-auto flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2.5">
             <Logo />
@@ -108,7 +108,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
             {/* Left — copy */}
             <div>
-              <div className="inline-flex items-center gap-2 text-xs font-semibold text-brand-600 bg-brand-50/80 backdrop-blur border border-brand-200/50 px-4 py-2 rounded-pill mb-8 tracking-wide uppercase animate-fade-in">
+              <div className="inline-flex items-center gap-2 text-xs font-semibold text-brand-400 bg-brand-900/30 backdrop-blur border border-brand-700/30 px-4 py-2 rounded-pill mb-8 tracking-wide uppercase animate-fade-in">
                 <Sparkles className="w-3.5 h-3.5" /> Claude Opus 4.6
               </div>
 
@@ -145,7 +145,7 @@ export default function LandingPage() {
       </div>
 
       {/* ── Metrics strip ────────────────────────────────────────────── */}
-      <div className="border-y border-surface-border bg-surface-bg/60">
+      <div className="border-y border-surface-border bg-surface-card/50">
         <div className="max-w-6xl mx-auto px-6 py-10 grid grid-cols-2 md:grid-cols-4 gap-8">
           {[
             { value: 5, suffix: '+', label: 'Applications per session' },
@@ -177,8 +177,8 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Large card — spans 2 cols */}
             <div className="md:col-span-2 gradient-border group">
-              <div className="bg-white rounded-card p-8 h-full flex flex-col">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
+              <div className="bg-surface-card rounded-card p-8 h-full flex flex-col">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
                   <Eye className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-bold text-xl text-ink-primary mb-2">Watch every action live</h3>
@@ -195,8 +195,8 @@ export default function LandingPage() {
 
             {/* Small card */}
             <div className="gradient-border group">
-              <div className="bg-white rounded-card p-8 h-full flex flex-col">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
+              <div className="bg-surface-card rounded-card p-8 h-full flex flex-col">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
                   <Upload className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-bold text-lg text-ink-primary mb-2">Upload once, apply everywhere</h3>
@@ -208,8 +208,8 @@ export default function LandingPage() {
 
             {/* Small card */}
             <div className="gradient-border group">
-              <div className="bg-white rounded-card p-8 h-full flex flex-col">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
+              <div className="bg-surface-card rounded-card p-8 h-full flex flex-col">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-green-500 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
                   <Bot className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-bold text-lg text-ink-primary mb-2">AI scores every match</h3>
@@ -221,8 +221,8 @@ export default function LandingPage() {
 
             {/* Large card — spans 2 cols */}
             <div className="md:col-span-2 gradient-border group">
-              <div className="bg-white rounded-card p-8 h-full flex flex-col">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
+              <div className="bg-surface-card rounded-card p-8 h-full flex flex-col">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center mb-5 shadow-lg group-hover:scale-110 transition-transform duration-300">
                   <Shield className="w-5 h-5 text-white" />
                 </div>
                 <h3 className="font-bold text-xl text-ink-primary mb-2">You're always in control</h3>
@@ -241,7 +241,7 @@ export default function LandingPage() {
       </div>
 
       {/* ── Steps ────────────────────────────────────────────────────── */}
-      <div className="bg-surface-bg py-28">
+      <div className="bg-surface-card/30 py-28">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-16">
             <p className="text-xs font-bold text-brand-500 uppercase tracking-[0.2em] mb-4">Get started</p>
@@ -271,7 +271,7 @@ export default function LandingPage() {
 
       {/* ── CTA ──────────────────────────────────────────────────────── */}
       <div className="relative py-32 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-brand-900 via-brand-800 to-purple-900" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#050A15] via-[#0A1628] to-[#0C1A2E]" />
         <div className="absolute inset-0 bg-hero-mesh opacity-20" />
         <div className="absolute top-10 left-10 w-80 h-80 bg-brand-500/15 rounded-full blur-[100px]" />
         <div className="absolute bottom-10 right-10 w-60 h-60 bg-pink-500/10 rounded-full blur-[80px]" />
@@ -279,23 +279,23 @@ export default function LandingPage() {
         <div className="relative max-w-2xl mx-auto px-6 text-center">
           <h2 className="text-5xl font-black text-white mb-6 tracking-tight leading-tight">
             Stop applying manually.<br />
-            <span className="text-brand-300">Let AI do it.</span>
+            <span className="text-brand-400">Let AI do it.</span>
           </h2>
-          <p className="text-brand-200/70 mb-10 text-lg leading-relaxed">
+          <p className="text-brand-400/70 mb-10 text-lg leading-relaxed">
             Every minute you spend filling forms is a minute you're not preparing for interviews.
           </p>
           <button
             onClick={() => navigate('/sign-up')}
-            className="inline-flex items-center gap-2 bg-white text-brand-700 font-bold text-lg px-10 py-5 rounded-2xl hover:bg-brand-50 transition-all duration-200 hover:shadow-float cursor-pointer"
+            className="inline-flex items-center gap-2 bg-white text-brand-400 font-bold text-lg px-10 py-5 rounded-2xl hover:bg-brand-900/30 transition-all duration-200 hover:shadow-float cursor-pointer"
           >
             Start for Free <ArrowRight className="w-5 h-5" />
           </button>
-          <p className="text-brand-300/50 text-sm mt-6">5 free credits · No credit card</p>
+          <p className="text-brand-400/50 text-sm mt-6">5 free credits · No credit card</p>
         </div>
       </div>
 
       {/* ── Footer ───────────────────────────────────────────────────── */}
-      <div className="border-t border-surface-border bg-white py-8">
+      <div className="border-t border-surface-border bg-surface-bg py-8">
         <div className="max-w-6xl mx-auto px-6 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Logo size={20} />

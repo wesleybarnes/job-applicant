@@ -15,8 +15,8 @@ export const useAppUser = () => useContext(AppUserContext)
 
 function Spinner() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white">
-      <div className="animate-spin w-8 h-8 border-[2.5px] border-brand-100 border-t-brand-500 rounded-full" />
+    <div className="min-h-screen flex items-center justify-center bg-surface-bg">
+      <div className="animate-spin w-7 h-7 border-[2.5px] border-surface-border border-t-brand-500 rounded-full" />
     </div>
   )
 }
@@ -24,9 +24,9 @@ function Spinner() {
 function BackendError({ error, onRetry }) {
   const { signOut } = useAuth()
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-white">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-surface-bg">
       <div className="text-center max-w-md card p-10">
-        <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center mx-auto mb-5">
+        <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-5">
           <span className="text-2xl">⚠️</span>
         </div>
         <h2 className="font-bold text-ink-primary text-xl mb-2">Can't reach the server</h2>
@@ -34,7 +34,7 @@ function BackendError({ error, onRetry }) {
           The backend isn't responding. Try again, or sign out and back in.
         </p>
         {error && (
-          <p className="text-red-500 text-xs font-mono bg-red-50 rounded-xl px-3 py-2 mb-6 break-all">
+          <p className="text-red-400 text-xs font-mono bg-red-500/10 rounded-xl px-3 py-2 mb-6 break-all border border-red-500/20">
             {String(error)}
           </p>
         )}
@@ -51,7 +51,7 @@ function BackendError({ error, onRetry }) {
 
 function AuthPage({ children }) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-surface-bg">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0A0F1C' }}>
       {children}
     </div>
   )
