@@ -71,9 +71,12 @@ class HuntSession:
         else:
             self.emit({"type": "status", "message": "▶ Resumed"})
 
-    async def check_paused(self):
+    async def check_paused(self) -> Optional[str]:
+        """Block while paused. Returns user instruction if one was given on resume."""
         if self._paused:
             await self._resume_event.wait()
+        # Always check for instruction after resume
+        return self.pop_instruction()
 
     def pop_instruction(self) -> Optional[str]:
         inst = self._user_instruction
@@ -452,7 +455,7 @@ Pre-written answers: {custom}""".strip()
         except Exception:
             pass
         await element.click()
-        await asyncio.sleep(0.4)
+        await asyncio.sleep(0.25)
 
     async def _human_type(self, page, element, text: str, session: HuntSession):
         """Type with human-like character-by-character delay."""
@@ -478,7 +481,7 @@ Pre-written answers: {custom}""".strip()
         step_amount = amount // steps
         for _ in range(steps):
             await page.evaluate(f"window.scrollBy(0, {step_amount})")
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.15)
 
     # ── Opus-powered form filling ────────────────────────────────────────
 
@@ -495,9 +498,15 @@ Pre-written answers: {custom}""".strip()
         for page_num in range(5):
             if session._stopped:
                 break
+            # Respect pause — user may want to take over mid-form
+            instruction = await session.check_paused()
+            if session._stopped:
+                break
+            if instruction:
+                session.emit({"type": "thinking", "message": f"Got your instruction: \"{instruction}\". Continuing with that in mind."})
 
             # Get current form state
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
             try:
                 page_text = await page.inner_text("body")
                 page_text = page_text[:3000]
@@ -537,6 +546,10 @@ and upload_resume if there's a file upload. When all fields are filled, call for
             next_action = None
 
             for block in resp.content:
+                if session._stopped:
+                    break
+                # Check pause between each tool call — this is where user can take over
+                await session.check_paused()
                 if session._stopped:
                     break
                 if not hasattr(block, 'type') or block.type != 'tool_use':
@@ -695,17 +708,19 @@ and upload_resume if there's a file upload. When all fields are filled, call for
     # ── Screenshot loop (5fps for smooth streaming) ──────────────────────
 
     async def _screenshot_loop(self, page, session: HuntSession):
+        """Stream screenshots at ~10fps using JPEG for speed."""
         while not session._stopped:
             try:
-                png = await page.screenshot(full_page=False)
-                b64 = base64.b64encode(png).decode()
+                # JPEG at quality 55 is ~5x smaller than PNG → faster SSE transfer
+                jpg = await page.screenshot(full_page=False, type="jpeg", quality=55)
+                b64 = base64.b64encode(jpg).decode()
                 meta = {}
                 if session.cursor_x is not None:
                     meta = {"cx": session.cursor_x, "cy": session.cursor_y}
-                session.emit({"type": "screenshot", "data": b64, **meta})
+                session.emit({"type": "screenshot", "data": b64, "fmt": "jpeg", **meta})
             except Exception:
                 pass
-            await asyncio.sleep(0.2)  # 5fps for smooth viewing
+            await asyncio.sleep(0.1)  # 10fps for real-time feel
 
     # ── Main hunt loop ───────────────────────────────────────────────────
 
@@ -802,17 +817,17 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     session.emit({"type": "action", "message": f"Opening {board_display} — searching for '{query}' in '{location}'"})
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                        await asyncio.sleep(2)
+                        await asyncio.sleep(1.2)
                     except Exception as e:
                         session.emit({"type": "action", "message": f"Navigation failed: {str(e)[:60]}"})
                         continue
 
                     # Smooth scroll to load more jobs (visible to user)
                     session.emit({"type": "action", "message": f"Scrolling through {board_display} results..."})
-                    await self._smooth_scroll(page, 2400, steps=8)
-                    await asyncio.sleep(1)
+                    await self._smooth_scroll(page, 2400, steps=6)
+                    await asyncio.sleep(0.5)
                     await page.evaluate("window.scrollTo({ top: 0, behavior: 'smooth' })")
-                    await asyncio.sleep(0.8)
+                    await asyncio.sleep(0.4)
 
                     # Extract jobs from the page
                     raw_jobs = await self._extract_jobs_from_page(page, board)
@@ -897,21 +912,34 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         if not job_url:
                             continue
 
+                        # Check pause + instruction between jobs
+                        instruction = await session.check_paused()
+                        if session._stopped:
+                            break
+                        if instruction:
+                            session.emit({"type": "thinking", "message": f"Following your instruction: \"{instruction}\""})
+
                         # Navigate to job page (user sees the listing)
                         score = job.get('score', 0)
                         reason = job.get('reason', '')
                         session.emit({"type": "thinking", "message": f"Opening {job_title} at {company} (score: {score}%). {reason}"})
                         try:
                             await page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(1.5)
                         except Exception as e:
                             session.emit({"type": "action", "message": f"Could not open job page — {str(e)[:50]}"})
+                            continue
+
+                        # Detect LinkedIn login redirect — skip instead of getting stuck
+                        current_url = page.url
+                        if 'linkedin.com/login' in current_url or 'linkedin.com/checkpoint' in current_url or 'authwall' in current_url:
+                            session.emit({"type": "thinking", "message": f"LinkedIn requires login to view this job. Skipping — add LinkedIn credentials for full access."})
                             continue
 
                         # Scroll to read the listing (visible to user)
                         session.emit({"type": "action", "message": f"Reading job description..."})
                         await self._smooth_scroll(page, 400, steps=3)
-                        await asyncio.sleep(0.8)
+                        await asyncio.sleep(0.5)
                         await page.evaluate("window.scrollTo(0, 0)")
                         await asyncio.sleep(0.5)
 
@@ -934,7 +962,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                                 if await el.count() > 0 and await el.is_visible():
                                     session.emit({"type": "action", "message": f"Clicking apply button..."})
                                     await self._click_element(page, session, el)
-                                    await asyncio.sleep(1.5)
+                                    await asyncio.sleep(0.8)
                                     apply_clicked = True
                                     break
                             except Exception:

@@ -61,7 +61,7 @@ export default function HuntView({ huntId, onClose }) {
     switch (event.type) {
       case 'connected': setStatus('running'); addLog(event); break
       case 'screenshot':
-        if (imgRef.current && event.data) { imgRef.current.src = `data:image/png;base64,${event.data}`; latestScreenshot.current = event.data }
+        if (imgRef.current && event.data) { imgRef.current.src = `data:image/${event.fmt || 'png'};base64,${event.data}`; latestScreenshot.current = event.data }
         if (event.cx != null) setCursor({ cx: event.cx, cy: event.cy }); break
       case 'action': case 'status': addLog(event); break
       case 'thinking': addLog({ ...event, type: 'thinking' }); break
