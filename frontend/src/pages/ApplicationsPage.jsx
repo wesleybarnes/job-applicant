@@ -4,37 +4,21 @@ import {
   CheckCircle, AlertCircle, Clock, ExternalLink,
   Monitor, Zap, ToggleLeft, ToggleRight,
 } from 'lucide-react'
-import { listApplications, runAgent, updateApplication, getUser, updateUser } from '../api/client'
+import { listApplications, runAgent, updateApplication, updateUser } from '../api/client'
 import { useAppUser } from '../App'
 import BrowserView from '../components/BrowserView'
 import api from '../api/client'
 
 const STATUS_CONFIG = {
-  pending:          { color: 'bg-gray-100 text-gray-700',    label: 'Pending',          icon: Clock },
-  in_progress:      { color: 'bg-blue-100 text-blue-700',    label: 'In Progress',      icon: Loader2 },
-  ready_to_submit:  { color: 'bg-purple-100 text-purple-700',label: 'Ready to Submit',  icon: CheckCircle },
-  submitted:        { color: 'bg-green-100 text-green-700',  label: 'Submitted',        icon: CheckCircle },
-  applied:          { color: 'bg-green-100 text-green-700',  label: 'Applied',          icon: CheckCircle },
-  interviewing:     { color: 'bg-indigo-100 text-indigo-700',label: 'Interviewing',     icon: CheckCircle },
-  rejected:         { color: 'bg-red-100 text-red-700',      label: 'Rejected',         icon: AlertCircle },
-  offer:            { color: 'bg-emerald-100 text-emerald-700', label: 'Offer!',         icon: CheckCircle },
-  not_recommended:  { color: 'bg-orange-100 text-orange-700',label: 'Low Match',        icon: AlertCircle },
-}
-
-function AgentLog({ log }) {
-  if (!log?.length) return null
-  return (
-    <div className="mt-3 space-y-1.5">
-      {log.map((entry, i) => (
-        <div key={i} className="flex items-start gap-2 text-xs text-gray-600">
-          <span className={`badge flex-shrink-0 ${entry.type === 'tool_call' ? 'bg-indigo-100 text-indigo-600' : 'bg-gray-100 text-gray-500'}`}>
-            {entry.type === 'tool_call' ? 'tool' : 'log'}
-          </span>
-          <span className="line-clamp-2">{entry.summary || entry.content}</span>
-        </div>
-      ))}
-    </div>
-  )
+  pending:          { color: 'bg-surface-hover text-ink-secondary',  label: 'Pending',          icon: Clock },
+  in_progress:      { color: 'bg-brand-50 text-brand-600',            label: 'In Progress',      icon: Loader2 },
+  ready_to_submit:  { color: 'bg-purple-50 text-purple-700',          label: 'Ready',            icon: CheckCircle },
+  submitted:        { color: 'bg-green-50 text-green-700',            label: 'Submitted',        icon: CheckCircle },
+  applied:          { color: 'bg-green-50 text-green-700',            label: 'Applied',          icon: CheckCircle },
+  interviewing:     { color: 'bg-purple-50 text-purple-700',          label: 'Interviewing',     icon: CheckCircle },
+  rejected:         { color: 'bg-red-50 text-red-600',                label: 'Rejected',         icon: AlertCircle },
+  offer:            { color: 'bg-emerald-50 text-emerald-700',        label: 'Offer!',           icon: CheckCircle },
+  not_recommended:  { color: 'bg-yellow-50 text-yellow-700',          label: 'Low Match',        icon: AlertCircle },
 }
 
 function ApplicationCard({ app, autoApply, onRunAgent, onRunBrowser, onStatusChange }) {
@@ -43,8 +27,6 @@ function ApplicationCard({ app, autoApply, onRunAgent, onRunBrowser, onStatusCha
 
   const statusCfg = STATUS_CONFIG[app.status] || STATUS_CONFIG.pending
   const StatusIcon = statusCfg.icon
-  const hasUrl = !!app.job?.url
-  const hasCoverLetter = !!app.cover_letter
 
   const handleAI = async () => {
     setRunningAI(true)
@@ -53,29 +35,28 @@ function ApplicationCard({ app, autoApply, onRunAgent, onRunBrowser, onStatusCha
   }
 
   return (
-    <div className="card border border-gray-200">
+    <div className="card p-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
-            <h3 className="font-semibold text-gray-900">{app.job?.title || 'Unknown Job'}</h3>
-            <span className={`badge ${statusCfg.color} flex items-center gap-1`}>
+            <h3 className="font-semibold text-ink-primary text-sm">{app.job?.title || 'Unknown Job'}</h3>
+            <span className={`badge text-xs flex items-center gap-1 ${statusCfg.color}`}>
               <StatusIcon className={`w-3 h-3 ${runningAI ? 'animate-spin' : ''}`} />
               {statusCfg.label}
             </span>
           </div>
-          <p className="text-sm text-gray-600">{app.job?.company} · {app.job?.location || 'Location N/A'}</p>
+          <p className="text-sm text-ink-secondary">{app.job?.company} · {app.job?.location || 'Location N/A'}</p>
           {app.job?.url && (
             <a href={app.job.url} target="_blank" rel="noopener noreferrer"
-               className="text-xs text-primary-600 hover:underline flex items-center gap-1 mt-0.5">
-              View posting <ExternalLink className="w-3 h-3" />
+               className="text-xs text-brand-500 hover:text-brand-600 flex items-center gap-1 mt-0.5">
+              View posting <ExternalLink className="w-2.5 h-2.5" />
             </a>
           )}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-          {/* Status selector */}
           <select
-            className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-1 focus:ring-primary-500"
+            className="text-xs border border-surface-border rounded-lg px-2 py-1.5 text-ink-secondary bg-white outline-none focus:border-brand-400"
             value={app.status}
             onChange={e => onStatusChange(app.id, e.target.value)}
           >
@@ -84,72 +65,56 @@ function ApplicationCard({ app, autoApply, onRunAgent, onRunBrowser, onStatusCha
             ))}
           </select>
 
-          {/* AI cover letter button */}
           <button
             onClick={handleAI}
             disabled={runningAI}
-            title="Generate cover letter with AI"
-            className="flex items-center gap-1.5 btn-secondary text-xs py-1.5 border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+            className="flex items-center gap-1.5 btn-secondary text-xs py-1.5"
           >
             {runningAI ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
-            {hasCoverLetter ? 'Re-write' : 'Write Cover Letter'}
+            {app.cover_letter ? 'Re-write' : 'Cover Letter'}
           </button>
 
-          {/* Browser apply button */}
           <button
             onClick={() => onRunBrowser(app.id)}
-            disabled={!hasUrl}
-            title={hasUrl ? (autoApply ? 'Auto-apply (no confirmation)' : 'Apply — you\'ll confirm before submit') : 'No URL for this job'}
-            className={`flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-lg font-medium transition-colors ${
-              !hasUrl
-                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                : autoApply
-                  ? 'bg-amber-500 hover:bg-amber-600 text-white'
-                  : 'btn-primary'
+            disabled={!app.job?.url}
+            className={`flex items-center gap-1.5 text-xs py-1.5 px-3 rounded-lg font-semibold transition-colors ${
+              !app.job?.url
+                ? 'bg-surface-hover text-ink-tertiary cursor-not-allowed'
+                : 'btn-primary'
             }`}
           >
             <Monitor className="w-3.5 h-3.5" />
-            {autoApply ? 'Auto-Apply' : 'Apply Now'}
+            {autoApply ? 'Auto-Apply' : 'Apply'}
           </button>
 
-          <button onClick={() => setExpanded(v => !v)} className="p-1 text-gray-400 hover:text-gray-600">
+          <button onClick={() => setExpanded(v => !v)} className="p-1 text-ink-tertiary hover:text-ink-primary rounded">
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
         </div>
       </div>
 
-      {/* Expanded */}
       {expanded && (
-        <div className="mt-4 pt-4 border-t border-gray-100 space-y-4">
+        <div className="mt-4 pt-4 border-t border-surface-border space-y-4">
           {app.cover_letter && (
             <div>
               <div className="flex items-center justify-between mb-2">
-                <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide flex items-center gap-1">
+                <h4 className="text-xs font-semibold text-ink-secondary uppercase tracking-wide flex items-center gap-1">
                   <FileText className="w-3.5 h-3.5" /> Cover Letter
                 </h4>
-                <button
-                  onClick={() => navigator.clipboard.writeText(app.cover_letter)}
-                  className="text-xs text-primary-600 hover:underline"
-                >Copy</button>
+                <button onClick={() => navigator.clipboard.writeText(app.cover_letter)} className="text-xs text-brand-500 hover:text-brand-600 font-medium">
+                  Copy
+                </button>
               </div>
-              <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
+              <div className="bg-surface-hover rounded-xl p-4 text-sm text-ink-secondary whitespace-pre-wrap leading-relaxed max-h-64 overflow-y-auto">
                 {app.cover_letter}
               </div>
             </div>
           )}
-          {app.agent_log?.length > 0 && (
-            <div>
-              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2 flex items-center gap-1">
-                <Bot className="w-3.5 h-3.5" /> Agent Log
-              </h4>
-              <AgentLog log={app.agent_log} />
-            </div>
-          )}
           <div>
-            <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Notes</h4>
+            <h4 className="text-xs font-semibold text-ink-secondary uppercase tracking-wide mb-2">Notes</h4>
             <textarea
               className="input text-sm min-h-[60px] resize-y"
-              placeholder="Add notes..."
+              placeholder="Add private notes..."
               defaultValue={app.notes || ''}
               onBlur={e => onStatusChange(app.id, app.status, e.target.value)}
             />
@@ -164,162 +129,123 @@ export default function ApplicationsPage() {
   const { appUser } = useAppUser()
   const userId = appUser?.id
   const [applications, setApplications] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('all')
-  const [agentMessage, setAgentMessage] = useState(null)
-  const [autoApply, setAutoApply] = useState(false)
-  const [activeBrowserAppId, setActiveBrowserAppId] = useState(null) // which app has live browser
+  const [loading, setLoading]           = useState(true)
+  const [filter, setFilter]             = useState('all')
+  const [banner, setBanner]             = useState(null)
+  const [autoApply, setAutoApply]       = useState(false)
+  const [activeBrowserAppId, setActiveBrowserAppId] = useState(null)
 
   useEffect(() => {
     load()
-    loadUserSettings()
+    setAutoApply(!!appUser?.auto_apply)
   }, [userId])
 
   const load = async () => {
     setLoading(true)
-    try {
-      const data = await listApplications(userId)
-      setApplications(data)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadUserSettings = async () => {
-    try {
-      const user = await import('../api/client').then(m => m.getUser(userId))
-      setAutoApply(!!user.auto_apply)
-    } catch {}
+    try { setApplications(await listApplications(userId)) }
+    finally { setLoading(false) }
   }
 
   const toggleAutoApply = async () => {
-    const newVal = !autoApply
-    setAutoApply(newVal)
-    try {
-      await updateUser(userId, { auto_apply: newVal })
-    } catch {}
+    const val = !autoApply
+    setAutoApply(val)
+    try { await updateUser(userId, { auto_apply: val }) } catch {}
   }
 
   const handleRunAgent = async (appId) => {
-    setAgentMessage({ id: appId, text: 'Claude is analyzing and writing your cover letter...' })
+    setBanner({ text: 'Claude is writing your cover letter...' })
     try {
       const result = await runAgent({ application_id: appId, mode: 'full' })
       setApplications(prev => prev.map(a =>
-        a.id === appId
-          ? { ...a, status: result.status, cover_letter: result.cover_letter, agent_log: result.agent_log }
-          : a
+        a.id === appId ? { ...a, status: result.status, cover_letter: result.cover_letter, agent_log: result.agent_log } : a
       ))
-      setAgentMessage({ id: appId, text: result.message, success: true })
-      setTimeout(() => setAgentMessage(null), 4000)
-    } catch (e) {
-      setAgentMessage({ id: appId, text: 'AI failed. Check your ANTHROPIC_API_KEY.', error: true })
-      setTimeout(() => setAgentMessage(null), 5000)
+      setBanner({ text: result.message, success: true })
+      setTimeout(() => setBanner(null), 4000)
+    } catch {
+      setBanner({ text: 'AI failed. Check ANTHROPIC_API_KEY.', error: true })
+      setTimeout(() => setBanner(null), 5000)
     }
   }
 
   const handleRunBrowser = async (appId) => {
-    try {
-      await api.post(`/browser/start/${appId}`)
-      setActiveBrowserAppId(appId)
-    } catch (e) {
-      const msg = e.response?.data?.detail || 'Could not start browser session.'
-      setAgentMessage({ id: appId, text: msg, error: true })
-      setTimeout(() => setAgentMessage(null), 5000)
-    }
-  }
-
-  const handleBrowserClose = () => {
-    setActiveBrowserAppId(null)
-    load() // refresh to pick up any status changes
-  }
-
-  const handleRunAllPending = async () => {
-    const pending = applications.filter(a => a.status === 'pending')
-    for (const app of pending) {
-      await handleRunAgent(app.id)
+    try { await api.post(`/browser/start/${appId}`); setActiveBrowserAppId(appId) }
+    catch (e) {
+      setBanner({ text: e.response?.data?.detail || 'Could not start browser.', error: true })
+      setTimeout(() => setBanner(null), 5000)
     }
   }
 
   const handleStatusChange = async (appId, status, notes) => {
     const update = {}
     if (status !== undefined) update.status = status
-    if (notes !== undefined) update.notes = notes
+    if (notes  !== undefined) update.notes  = notes
     await updateApplication(appId, update)
     setApplications(prev => prev.map(a => a.id === appId ? { ...a, ...update } : a))
   }
 
-  const filtered = filter === 'all' ? applications : applications.filter(a => a.status === filter)
+  const filtered     = filter === 'all' ? applications : applications.filter(a => a.status === filter)
   const pendingCount = applications.filter(a => a.status === 'pending').length
 
   return (
-    <div className="p-8 max-w-4xl">
+    <div className="p-8 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Applications</h1>
-          <p className="text-gray-500 mt-1">{applications.length} total · {pendingCount} pending</p>
+          <h1 className="text-2xl font-bold text-ink-primary">Applications</h1>
+          <p className="text-ink-secondary mt-1 text-sm">{applications.length} total · {pendingCount} pending</p>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
-          {/* Auto-apply toggle */}
           <button
             onClick={toggleAutoApply}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-medium transition-colors ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-sm font-semibold transition-colors ${
               autoApply
-                ? 'bg-amber-50 border-amber-300 text-amber-800'
-                : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                ? 'bg-brand-50 border-brand-200 text-brand-700'
+                : 'bg-white border-surface-border text-ink-secondary hover:border-surface-border'
             }`}
-            title={autoApply
-              ? 'Auto-apply ON: agent submits without asking'
-              : 'Auto-apply OFF: agent asks before every submit'}
           >
-            {autoApply
-              ? <ToggleRight className="w-5 h-5 text-amber-600" />
-              : <ToggleLeft className="w-5 h-5 text-gray-400" />
-            }
-            <span>Auto-Apply</span>
-            <span className={`text-xs px-1.5 py-0.5 rounded font-semibold ${
-              autoApply ? 'bg-amber-200 text-amber-800' : 'bg-gray-100 text-gray-500'
-            }`}>{autoApply ? 'ON' : 'OFF'}</span>
+            {autoApply ? <ToggleRight className="w-5 h-5 text-brand-500" /> : <ToggleLeft className="w-5 h-5 text-ink-tertiary" />}
+            Auto-Apply
+            <span className={`text-xs px-1.5 py-0.5 rounded font-bold ${autoApply ? 'bg-brand-500 text-white' : 'bg-surface-hover text-ink-tertiary'}`}>
+              {autoApply ? 'ON' : 'OFF'}
+            </span>
           </button>
 
           {pendingCount > 0 && (
-            <button onClick={handleRunAllPending} className="btn-primary flex items-center gap-2">
+            <button onClick={() => applications.filter(a => a.status === 'pending').forEach(a => handleRunAgent(a.id))} className="btn-primary flex items-center gap-2">
               <Bot className="w-4 h-4" /> Write All Cover Letters ({pendingCount})
             </button>
           )}
         </div>
       </div>
 
-      {/* Auto-apply explanation */}
       {autoApply && (
-        <div className="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-2 text-sm text-amber-800">
-          <Zap className="w-4 h-4 mt-0.5 flex-shrink-0 text-amber-600" />
-          <p><strong>Auto-Apply is ON.</strong> When you click "Auto-Apply" on a job, the AI will fill out and submit the form without stopping to ask you. Turn this off to review before each submission.</p>
+        <div className="mb-5 p-4 bg-brand-50 border border-brand-100 rounded-xl flex items-start gap-2.5 text-sm text-brand-700">
+          <Zap className="w-4 h-4 mt-0.5 flex-shrink-0 text-brand-500" />
+          <p><strong>Auto-Apply is ON.</strong> The AI will fill and submit applications without asking for confirmation. Turn off to review before each submit.</p>
         </div>
       )}
 
-      {/* Agent message banner */}
-      {agentMessage && (
+      {banner && (
         <div className={`mb-4 p-3 rounded-xl text-sm flex items-center gap-2 border ${
-          agentMessage.error ? 'bg-red-50 text-red-700 border-red-200' :
-          agentMessage.success ? 'bg-green-50 text-green-700 border-green-200' :
-          'bg-blue-50 text-blue-700 border-blue-200'
+          banner.error   ? 'bg-red-50 text-red-700 border-red-100' :
+          banner.success ? 'bg-green-50 text-green-700 border-green-100' :
+          'bg-brand-50 text-brand-700 border-brand-100'
         }`}>
-          {!agentMessage.success && !agentMessage.error && <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />}
-          {agentMessage.text}
+          {!banner.success && !banner.error && <Loader2 className="w-4 h-4 animate-spin flex-shrink-0" />}
+          {banner.text}
         </div>
       )}
 
       {/* Filter tabs */}
       <div className="flex gap-2 mb-5 flex-wrap">
-        {['all', 'pending', 'ready_to_submit', 'submitted', 'interviewing', 'rejected'].map(s => (
+        {['all', 'pending', 'in_progress', 'submitted', 'interviewing', 'rejected'].map(s => (
           <button
             key={s}
             onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
               filter === s
-                ? 'bg-primary-600 text-white'
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-300'
+                ? 'bg-brand-500 text-white'
+                : 'bg-white text-ink-secondary border border-surface-border hover:border-brand-300 hover:text-brand-600'
             }`}
           >
             {s === 'all' ? `All (${applications.length})` : STATUS_CONFIG[s]?.label || s}
@@ -327,19 +253,18 @@ export default function ApplicationsPage() {
         ))}
       </div>
 
-      {/* List */}
       {loading ? (
         <div className="flex justify-center py-16">
-          <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
+          <Loader2 className="w-6 h-6 animate-spin text-brand-500" />
         </div>
       ) : filtered.length === 0 ? (
-        <div className="card text-center py-16 text-gray-400">
-          <FileText className="w-12 h-12 mx-auto mb-3 opacity-40" />
-          <p className="font-medium text-gray-600">
+        <div className="card p-16 text-center">
+          <FileText className="w-12 h-12 mx-auto mb-3 text-ink-tertiary opacity-40" />
+          <p className="font-semibold text-ink-primary">
             {applications.length === 0 ? 'No applications yet' : 'No applications match this filter'}
           </p>
           {applications.length === 0 && (
-            <p className="text-sm mt-1">Go to <span className="text-primary-600">Find Jobs</span> and click "Apply" on jobs you want.</p>
+            <p className="text-sm text-ink-secondary mt-1">Go to <span className="text-brand-500 font-medium">Find Jobs</span> and add jobs to your queue.</p>
           )}
         </div>
       ) : (
@@ -357,12 +282,8 @@ export default function ApplicationsPage() {
         </div>
       )}
 
-      {/* Live browser overlay */}
       {activeBrowserAppId && (
-        <BrowserView
-          applicationId={activeBrowserAppId}
-          onClose={handleBrowserClose}
-        />
+        <BrowserView applicationId={activeBrowserAppId} onClose={() => { setActiveBrowserAppId(null); load() }} />
       )}
     </div>
   )

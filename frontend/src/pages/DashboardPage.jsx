@@ -1,53 +1,43 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Briefcase, FileText, Bot, TrendingUp, ArrowRight, Upload, CheckCircle, X } from 'lucide-react'
+import { Briefcase, FileText, Crosshair, CheckCircle, ArrowRight, Upload, X, TrendingUp, Zap } from 'lucide-react'
 import { listApplications, listJobs, getResumes, uploadResume, deleteResume } from '../api/client'
 import { useAppUser } from '../App'
 
 const STATUS_COLORS = {
-  pending: 'bg-yellow-100 text-yellow-700',
-  in_progress: 'bg-blue-100 text-blue-700',
-  ready_to_submit: 'bg-purple-100 text-purple-700',
-  submitted: 'bg-green-100 text-green-700',
-  applied: 'bg-green-100 text-green-700',
-  interviewing: 'bg-indigo-100 text-indigo-700',
-  rejected: 'bg-red-100 text-red-700',
-  offer: 'bg-emerald-100 text-emerald-700',
+  pending:       'bg-yellow-50 text-yellow-700',
+  in_progress:   'bg-brand-50 text-brand-600',
+  submitted:     'bg-green-50 text-green-700',
+  applied:       'bg-green-50 text-green-700',
+  interviewing:  'bg-purple-50 text-purple-700',
+  rejected:      'bg-red-50 text-red-600',
+  offer:         'bg-emerald-50 text-emerald-700',
 }
 
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { appUser: user } = useAppUser()
   const [applications, setApplications] = useState([])
-  const [jobs, setJobs] = useState([])
-  const [resumes, setResumes] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState(null)
+  const [resumes, setResumes]           = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [uploading, setUploading]       = useState(false)
+  const [uploadError, setUploadError]   = useState(null)
+  const [dragOver, setDragOver]         = useState(false)
   const fileInputRef = useRef()
 
   const load = async () => {
     if (!user) return
     try {
-      const [apps, j, r] = await Promise.all([
-        listApplications(user.id),
-        listJobs({ limit: 5 }),
-        getResumes(user.id),
-      ])
+      const [apps, r] = await Promise.all([listApplications(user.id), getResumes(user.id)])
       setApplications(apps)
-      setJobs(j)
       setResumes(r)
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
+    } catch {}
+    finally { setLoading(false) }
   }
 
   useEffect(() => { load() }, [user?.id])
 
-  const handleUpload = async (e) => {
-    const file = e.target.files?.[0]
+  const doUpload = async (file) => {
     if (!file) return
     setUploading(true)
     setUploadError(null)
@@ -58,192 +48,167 @@ export default function DashboardPage() {
       setUploadError(err.response?.data?.detail || 'Upload failed. Try again.')
     } finally {
       setUploading(false)
-      e.target.value = ''
     }
   }
 
-  const handleDelete = async (resumeId) => {
-    try {
-      await deleteResume(resumeId)
-      setResumes(prev => prev.filter(r => r.id !== resumeId))
-    } catch {}
-  }
+  const handleFileChange = (e) => { doUpload(e.target.files?.[0]); e.target.value = '' }
+  const handleDrop = (e) => { e.preventDefault(); setDragOver(false); doUpload(e.dataTransfer.files?.[0]) }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <div className="animate-spin w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full" />
-      </div>
-    )
+  const handleDelete = async (id) => {
+    try { await deleteResume(id); setResumes(prev => prev.filter(r => r.id !== id)) } catch {}
   }
 
   const stats = [
-    { label: 'Jobs Found', value: jobs.length, icon: Briefcase, color: 'text-blue-600 bg-blue-50' },
-    { label: 'Applications', value: applications.length, icon: FileText, color: 'text-purple-600 bg-purple-50' },
-    { label: 'AI-Generated', value: applications.filter(a => a.cover_letter).length, icon: Bot, color: 'text-indigo-600 bg-indigo-50' },
-    { label: 'Submitted', value: applications.filter(a => ['submitted', 'applied', 'interviewing'].includes(a.status)).length, icon: CheckCircle, color: 'text-green-600 bg-green-50' },
+    { label: 'Active Applications', value: applications.length,          icon: FileText,    color: '#1877F2' },
+    { label: 'In Progress',         value: applications.filter(a => a.status === 'in_progress').length, icon: TrendingUp, color: '#0C5FD0' },
+    { label: 'Submitted',           value: applications.filter(a => ['submitted','applied','interviewing'].includes(a.status)).length, icon: CheckCircle, color: '#42B883' },
+    { label: 'Interviews',          value: applications.filter(a => a.status === 'interviewing').length, icon: Briefcase, color: '#7B61FF' },
   ]
 
+  const firstName = user?.full_name?.split(' ')[0]
+
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back{user?.full_name ? `, ${user.full_name.split(' ')[0]}` : ''}!
+        <h1 className="text-2xl font-bold text-ink-primary">
+          Good to see you{firstName ? `, ${firstName}` : ''}
         </h1>
-        <p className="text-gray-500 mt-1">Your job search is in good hands.</p>
+        <p className="text-ink-secondary mt-1 text-sm">Here's where your job search stands.</p>
       </div>
 
-      {/* Resume section */}
-      <div className="card mb-8">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-            <FileText className="w-4 h-4 text-primary-600" /> Resume
-          </h2>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className="btn-primary text-sm py-1.5 flex items-center gap-2"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            {uploading ? 'Uploading...' : 'Upload Resume'}
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.doc,.txt"
-            className="hidden"
-            onChange={handleUpload}
-          />
-        </div>
-
-        {uploadError && (
-          <p className="text-sm text-red-600 mb-3">{uploadError}</p>
-        )}
-
-        {resumes.length === 0 ? (
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-primary-400 hover:bg-primary-50 transition-colors"
-          >
-            <Upload className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-            <p className="text-sm font-medium text-gray-600">No resume uploaded yet</p>
-            <p className="text-xs text-gray-400 mt-1">Click to upload PDF, DOCX, or TXT · Max 10MB</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {resumes.map(r => (
-              <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3 min-w-0">
-                  <FileText className="w-4 h-4 text-primary-600 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{r.filename}</p>
-                    <p className="text-xs text-gray-500">{new Date(r.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                <button onClick={() => handleDelete(r.id)} className="p-1.5 text-gray-400 hover:text-red-500 rounded transition-colors flex-shrink-0">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {stats.map(({ label, value, icon: Icon, color }) => (
-          <div key={label} className="card flex items-center gap-4">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${color}`}>
-              <Icon className="w-5 h-5" />
+          <div key={label} className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: color + '15' }}>
+                <Icon className="w-4.5 h-4.5" style={{ color }} />
+              </div>
+              <span className="text-2xl font-bold text-ink-primary">{value}</span>
             </div>
-            <div>
-              <div className="text-2xl font-bold text-gray-900">{value}</div>
-              <div className="text-xs text-gray-500">{label}</div>
-            </div>
+            <p className="text-xs text-ink-tertiary font-medium">{label}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Applications */}
-        <div className="card">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Resume Card */}
+        <div className="lg:col-span-1 card p-5">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">Recent Applications</h2>
-            <button onClick={() => navigate('/applications')} className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1">
-              View all <ArrowRight className="w-3 h-3" />
+            <h2 className="font-semibold text-ink-primary flex items-center gap-2">
+              <FileText className="w-4 h-4 text-brand-500" /> Resume
+            </h2>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading}
+              className="btn-primary py-1.5 text-xs"
+            >
+              <Upload className="w-3 h-3" />
+              {uploading ? 'Uploading...' : 'Upload'}
             </button>
+            <input ref={fileInputRef} type="file" accept=".pdf,.docx,.doc,.txt" className="hidden" onChange={handleFileChange} />
           </div>
-          {applications.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <FileText className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p className="text-sm">No applications yet.</p>
-              <button onClick={() => navigate('/jobs')} className="text-sm text-primary-600 hover:underline mt-1">
-                Find jobs to apply to →
-              </button>
+
+          {uploadError && <p className="text-xs text-red-600 mb-3 bg-red-50 rounded-lg px-3 py-2">{uploadError}</p>}
+
+          {resumes.length === 0 ? (
+            <div
+              onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors ${
+                dragOver ? 'border-brand-400 bg-brand-50' : 'border-surface-border hover:border-brand-300 hover:bg-brand-50/40'
+              }`}
+            >
+              <Upload className="w-7 h-7 mx-auto mb-2 text-ink-tertiary" />
+              <p className="text-sm font-medium text-ink-secondary">Drop your resume here</p>
+              <p className="text-xs text-ink-tertiary mt-1">PDF, DOCX, TXT · Max 10MB</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {applications.slice(0, 5).map(app => (
-                <div key={app.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{app.job?.title || 'Unknown Job'}</p>
-                    <p className="text-xs text-gray-500 truncate">{app.job?.company}</p>
+            <div className="space-y-2">
+              {resumes.map(r => (
+                <div key={r.id} className={`flex items-center justify-between p-3 rounded-xl ${r.is_active ? 'bg-brand-50 border border-brand-100' : 'bg-surface-hover'}`}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${r.is_active ? 'bg-brand-500' : 'bg-surface-border'}`}>
+                      <FileText className={`w-3.5 h-3.5 ${r.is_active ? 'text-white' : 'text-ink-tertiary'}`} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-ink-primary truncate">{r.filename}</p>
+                      <p className="text-xs text-ink-tertiary">{new Date(r.created_at).toLocaleDateString()}</p>
+                    </div>
                   </div>
-                  <span className={`badge ml-3 flex-shrink-0 ${STATUS_COLORS[app.status] || 'bg-gray-100 text-gray-600'}`}>
-                    {app.status.replace(/_/g, ' ')}
-                  </span>
+                  <button onClick={() => handleDelete(r.id)} className="p-1 text-ink-tertiary hover:text-red-500 rounded transition-colors flex-shrink-0">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="card">
-          <h2 className="font-semibold text-gray-900 mb-4">Quick Actions</h2>
-          <div className="space-y-3">
-            <button
-              onClick={() => navigate('/jobs')}
-              className="w-full flex items-center gap-3 p-4 bg-primary-50 hover:bg-primary-100 rounded-xl transition-colors text-left"
-            >
-              <div className="w-9 h-9 bg-primary-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Briefcase className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <p className="font-medium text-primary-900">Search for Jobs</p>
-                <p className="text-xs text-primary-600">Find matching positions and add to your queue</p>
-              </div>
-              <ArrowRight className="w-4 h-4 text-primary-600 ml-auto" />
-            </button>
+        {/* Right column */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* Quick actions */}
+          <div className="card p-5">
+            <h2 className="font-semibold text-ink-primary mb-4">Quick Actions</h2>
+            <div className="space-y-2.5">
+              {[
+                { to: '/hunt', icon: Crosshair, label: 'AI Hunt Jobs', sub: 'Autonomous browser applies while you watch', color: '#1877F2' },
+                { to: '/jobs', icon: Briefcase, label: 'Browse Jobs',   sub: 'Search listings and add to your queue',       color: '#0C5FD0' },
+                { to: '/applications', icon: Zap, label: 'Applications', sub: 'Track status, review cover letters',           color: '#7B61FF' },
+              ].map(({ to, icon: Icon, label, sub, color }) => (
+                <button
+                  key={to}
+                  onClick={() => navigate(to)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-surface-hover transition-colors text-left group"
+                >
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: color + '15' }}>
+                    <Icon className="w-4.5 h-4.5" style={{ color }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-ink-primary">{label}</p>
+                    <p className="text-xs text-ink-tertiary">{sub}</p>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-ink-tertiary group-hover:text-brand-500 transition-colors" />
+                </button>
+              ))}
+            </div>
+          </div>
 
-            <button
-              onClick={() => navigate('/applications')}
-              className="w-full flex items-center gap-3 p-4 bg-purple-50 hover:bg-purple-100 rounded-xl transition-colors text-left"
-            >
-              <div className="w-9 h-9 bg-purple-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                <Bot className="w-5 h-5 text-white" />
+          {/* Recent applications */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-semibold text-ink-primary">Recent Applications</h2>
+              <button onClick={() => navigate('/applications')} className="text-xs text-brand-500 hover:text-brand-600 font-semibold flex items-center gap-1">
+                View all <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+            {loading ? (
+              <div className="flex justify-center py-6">
+                <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
               </div>
-              <div>
-                <p className="font-medium text-purple-900">Run AI Agent</p>
-                <p className="text-xs text-purple-600">Let Claude analyze and prepare your applications</p>
+            ) : applications.length === 0 ? (
+              <div className="text-center py-8 text-ink-tertiary">
+                <FileText className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                <p className="text-sm">No applications yet.</p>
               </div>
-              <ArrowRight className="w-4 h-4 text-purple-600 ml-auto" />
-            </button>
-
-            <button
-              onClick={() => navigate('/applications')}
-              className="w-full flex items-center gap-3 p-4 bg-green-50 hover:bg-green-100 rounded-xl transition-colors text-left"
-            >
-              <div className="w-9 h-9 bg-green-600 rounded-lg flex items-center justify-center flex-shrink-0">
-                <TrendingUp className="w-5 h-5 text-white" />
+            ) : (
+              <div className="space-y-2">
+                {applications.slice(0, 6).map(app => (
+                  <div key={app.id} className="flex items-center justify-between py-2 px-3 rounded-xl hover:bg-surface-hover transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-ink-primary truncate">{app.job?.title || 'Unknown Job'}</p>
+                      <p className="text-xs text-ink-tertiary truncate">{app.job?.company}</p>
+                    </div>
+                    <span className={`badge ml-3 flex-shrink-0 text-xs ${STATUS_COLORS[app.status] || 'bg-surface-hover text-ink-tertiary'}`}>
+                      {app.status.replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="font-medium text-green-900">Track Progress</p>
-                <p className="text-xs text-green-600">Monitor statuses, interviews, and offers</p>
-              </div>
-              <ArrowRight className="w-4 h-4 text-green-600 ml-auto" />
-            </button>
+            )}
           </div>
         </div>
       </div>

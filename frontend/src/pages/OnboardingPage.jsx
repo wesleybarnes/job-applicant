@@ -1,25 +1,36 @@
 import React, { useState } from 'react'
-import { Sparkles, ChevronRight, ChevronLeft, Check, Upload, X } from 'lucide-react'
+import { ChevronRight, ChevronLeft, Check, Upload, X, Sparkles } from 'lucide-react'
 import { onboardMe, uploadResume } from '../api/client'
 
 const STEPS = [
-  { id: 1, title: 'Basic Info', desc: 'Confirm your details' },
-  { id: 2, title: 'Job Preferences', desc: 'What are you looking for?' },
-  { id: 3, title: 'Skills & Experience', desc: 'Your background' },
-  { id: 4, title: 'Upload Resume', desc: 'Your resume or CV' },
-  { id: 5, title: 'Application Answers', desc: 'Pre-fill common questions' },
+  { id: 1, title: 'Basic Info',         desc: 'Confirm your details' },
+  { id: 2, title: 'Job Preferences',    desc: 'What are you looking for?' },
+  { id: 3, title: 'Skills & Experience',desc: 'Your background' },
+  { id: 4, title: 'Upload Resume',      desc: 'Your resume or CV' },
+  { id: 5, title: 'Quick Answers',      desc: 'Pre-fill common questions' },
 ]
 
-const REMOTE_OPTIONS = ['Remote', 'Hybrid', 'On-site', 'Any']
-const AVAILABILITY_OPTIONS = ['Immediately', '2 weeks', '1 month', '2+ months']
-const EDUCATION_OPTIONS = ["High School", "Associate's", "Bachelor's", "Master's", "PhD", "Self-taught"]
-const WORK_AUTH_OPTIONS = ["US Citizen", "Green Card", "H1-B", "OPT/CPT", "TN Visa", "Other"]
+const REMOTE_OPTIONS    = ['Remote', 'Hybrid', 'On-site', 'Any']
+const AVAILABILITY_OPTS = ['Immediately', '2 weeks', '1 month', '2+ months']
+const EDUCATION_OPTS    = ["High School", "Associate's", "Bachelor's", "Master's", "PhD", "Self-taught"]
+const WORK_AUTH_OPTS    = ["US Citizen", "Green Card", "H1-B", "OPT/CPT", "TN Visa", "Other", "Japan Work Visa"]
+
+function Logo() {
+  return (
+    <svg width="32" height="32" viewBox="0 0 36 36" fill="none">
+      <rect width="36" height="36" rx="10" fill="#1877F2"/>
+      <path d="M11 25l5-14 5 14M13.5 19.5h6" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
+      <circle cx="26" cy="11" r="3" fill="white" opacity="0.85"/>
+    </svg>
+  )
+}
 
 export default function OnboardingPage({ clerkUser, onComplete }) {
-  const [step, setStep] = useState(1)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [step, setStep]           = useState(1)
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState(null)
   const [resumeFile, setResumeFile] = useState(null)
+  const [dragOver, setDragOver]   = useState(false)
   const [form, setForm] = useState({
     full_name: clerkUser?.fullName || '',
     email: clerkUser?.primaryEmailAddress?.emailAddress || '',
@@ -38,28 +49,34 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
   })
 
   const set = (field, value) => setForm(f => ({ ...f, [field]: value }))
-
   const addToList = (field, value) => {
-    const trimmed = value.trim()
-    if (!trimmed || form[field].includes(trimmed)) return
-    set(field, [...form[field], trimmed])
+    const v = value.trim()
+    if (!v || form[field].includes(v)) return
+    set(field, [...form[field], v])
   }
   const removeFromList = (field, value) => set(field, form[field].filter(v => v !== value))
 
-  const TagInput = ({ field, placeholder }) => {
+  function TagInput({ field, placeholder }) {
     const [val, setVal] = useState('')
     return (
       <div>
         <div className="flex gap-2 mb-2">
-          <input className="input flex-1" value={val} onChange={e => setVal(e.target.value)} placeholder={placeholder}
-            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addToList(field, val); setVal('') } }} />
+          <input
+            className="input flex-1"
+            value={val}
+            onChange={e => setVal(e.target.value)}
+            placeholder={placeholder}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addToList(field, val); setVal('') } }}
+          />
           <button type="button" className="btn-secondary px-3" onClick={() => { addToList(field, val); setVal('') }}>Add</button>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           {form[field].map(v => (
-            <span key={v} className="badge bg-primary-100 text-primary-700 gap-1">
+            <span key={v} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-pill bg-brand-50 text-brand-700 text-xs font-medium">
               {v}
-              <button onClick={() => removeFromList(field, v)} className="hover:text-red-500"><X className="w-3 h-3" /></button>
+              <button onClick={() => removeFromList(field, v)} className="hover:text-red-500 ml-0.5">
+                <X className="w-3 h-3" />
+              </button>
             </span>
           ))}
         </div>
@@ -68,168 +85,148 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
   }
 
   const handleSubmit = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
       const userData = {
         ...form,
-        salary_min: form.salary_min ? parseInt(form.salary_min) : null,
-        salary_max: form.salary_max ? parseInt(form.salary_max) : null,
+        salary_min:       form.salary_min       ? parseInt(form.salary_min)       : null,
+        salary_max:       form.salary_max       ? parseInt(form.salary_max)       : null,
         years_experience: form.years_experience ? parseInt(form.years_experience) : null,
         remote_preference: form.remote_preference.toLowerCase().replace(/[- ]/g, ''),
       }
       const user = await onboardMe(userData)
       if (resumeFile) await uploadResume(user.id, resumeFile)
-      await onComplete()  // refreshes appUser → triggers redirect to /dashboard
+      await onComplete()
     } catch (e) {
       const detail = e.response?.data?.detail
-      if (Array.isArray(detail)) {
-        setError(detail.map(d => `${d.loc?.join('.')}: ${d.msg}`).join(' · '))
-      } else {
-        setError(detail || e.message || 'Something went wrong.')
-      }
-      console.error('Onboarding error:', e.response?.data || e)
+      if (Array.isArray(detail)) setError(detail.map(d => `${d.loc?.join('.')}: ${d.msg}`).join(' · '))
+      else setError(detail || e.message || 'Something went wrong.')
     } finally {
       setLoading(false)
     }
   }
 
-  const canProceed = () => {
-    if (step === 1) return form.full_name && form.email
-    return true
-  }
+  const canProceed = () => step === 1 ? (form.full_name && form.email) : true
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <header className="bg-white border-b border-gray-200 px-8 py-4">
-        <div className="flex items-center gap-2 max-w-2xl mx-auto">
-          <div className="w-7 h-7 bg-primary-600 rounded-lg flex items-center justify-center">
-            <Sparkles className="w-4 h-4 text-white" />
-          </div>
-          <span className="font-bold text-gray-900">Envia</span>
+    <div className="min-h-screen flex flex-col" style={{ background: '#F0F2F5' }}>
+      {/* Nav */}
+      <header className="bg-white border-b border-surface-border px-6 py-3.5">
+        <div className="max-w-xl mx-auto flex items-center gap-2.5">
+          <Logo />
+          <span className="font-bold text-lg text-ink-primary tracking-tight">Envia</span>
         </div>
       </header>
 
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-12">
         <div className="w-full max-w-xl">
-          {/* Progress */}
-          <div className="mb-8">
-            <div className="flex items-center justify-between mb-3">
+
+          {/* Step progress */}
+          <div className="mb-6">
+            <div className="flex items-center mb-4">
               {STEPS.map((s, i) => (
                 <React.Fragment key={s.id}>
-                  <div className={`flex flex-col items-center ${i < STEPS.length - 1 ? 'flex-1' : ''}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors ${
-                      step > s.id ? 'bg-primary-600 border-primary-600 text-white' :
-                      step === s.id ? 'border-primary-600 text-primary-600 bg-white' :
-                      'border-gray-300 text-gray-400 bg-white'
+                  <div className="flex flex-col items-center">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                      step > s.id  ? 'bg-brand-500 border-brand-500 text-white' :
+                      step === s.id ? 'border-brand-500 text-brand-500 bg-white' :
+                      'border-surface-border text-ink-tertiary bg-white'
                     }`}>
-                      {step > s.id ? <Check className="w-4 h-4" /> : s.id}
+                      {step > s.id ? <Check className="w-3.5 h-3.5" /> : s.id}
                     </div>
                   </div>
                   {i < STEPS.length - 1 && (
-                    <div className={`flex-1 h-0.5 mx-1 ${step > s.id ? 'bg-primary-600' : 'bg-gray-200'}`} />
+                    <div className={`flex-1 h-0.5 mx-1 transition-colors ${step > s.id ? 'bg-brand-500' : 'bg-surface-border'}`} />
                   )}
                 </React.Fragment>
               ))}
             </div>
             <div className="text-center">
-              <h2 className="font-bold text-xl text-gray-900">{STEPS[step - 1].title}</h2>
-              <p className="text-sm text-gray-500">{STEPS[step - 1].desc}</p>
+              <h2 className="font-bold text-xl text-ink-primary">{STEPS[step - 1].title}</h2>
+              <p className="text-sm text-ink-secondary mt-0.5">{STEPS[step - 1].desc}</p>
             </div>
           </div>
 
-          <div className="card">
+          <div className="card p-7">
             {error && (
-              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200">{error}</div>
+              <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-100">{error}</div>
             )}
 
-            {/* Step 1 */}
+            {/* Step 1: Basic Info */}
             {step === 1 && (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">Full Name *</label>
-                    <input className="input" value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Jane Smith" />
-                  </div>
-                  <div>
-                    <label className="label">Email *</label>
-                    <input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="jane@example.com" />
-                  </div>
+                  <div><label className="label">Full Name *</label><input className="input" value={form.full_name} onChange={e => set('full_name', e.target.value)} placeholder="Jane Smith" /></div>
+                  <div><label className="label">Email *</label><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="jane@example.com" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">Phone</label>
-                    <input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="(555) 123-4567" />
-                  </div>
-                  <div>
-                    <label className="label">Location</label>
-                    <input className="input" value={form.location} onChange={e => set('location', e.target.value)} placeholder="San Francisco, CA" />
-                  </div>
+                  <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+1 (555) 123-4567" /></div>
+                  <div><label className="label">Location</label><input className="input" value={form.location} onChange={e => set('location', e.target.value)} placeholder="San Francisco, CA" /></div>
                 </div>
-                <div>
-                  <label className="label">LinkedIn URL</label>
-                  <input className="input" value={form.linkedin_url} onChange={e => set('linkedin_url', e.target.value)} placeholder="linkedin.com/in/janesmith" />
-                </div>
+                <div><label className="label">LinkedIn URL</label><input className="input" value={form.linkedin_url} onChange={e => set('linkedin_url', e.target.value)} placeholder="linkedin.com/in/janesmith" /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">GitHub URL</label>
-                    <input className="input" value={form.github_url} onChange={e => set('github_url', e.target.value)} placeholder="github.com/janesmith" />
-                  </div>
-                  <div>
-                    <label className="label">Portfolio URL</label>
-                    <input className="input" value={form.portfolio_url} onChange={e => set('portfolio_url', e.target.value)} placeholder="janesmith.dev" />
-                  </div>
+                  <div><label className="label">GitHub URL</label><input className="input" value={form.github_url} onChange={e => set('github_url', e.target.value)} placeholder="github.com/janesmith" /></div>
+                  <div><label className="label">Portfolio URL</label><input className="input" value={form.portfolio_url} onChange={e => set('portfolio_url', e.target.value)} placeholder="janesmith.dev" /></div>
                 </div>
               </div>
             )}
 
-            {/* Step 2 */}
+            {/* Step 2: Job Preferences */}
             {step === 2 && (
               <div className="space-y-5">
                 <div><label className="label">Target Job Titles</label><TagInput field="target_roles" placeholder="e.g. Software Engineer" /></div>
                 <div><label className="label">Target Industries</label><TagInput field="target_industries" placeholder="e.g. FinTech, Healthcare" /></div>
                 <div><label className="label">Preferred Locations</label><TagInput field="target_locations" placeholder="e.g. Tokyo, Remote" /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div><label className="label">Min Salary ($)</label><input className="input" type="number" value={form.salary_min} onChange={e => set('salary_min', e.target.value)} placeholder="80000" /></div>
-                  <div><label className="label">Max Salary ($)</label><input className="input" type="number" value={form.salary_max} onChange={e => set('salary_max', e.target.value)} placeholder="150000" /></div>
+                  <div><label className="label">Min Salary ($)</label><input className="input" type="number" value={form.salary_min} onChange={e => set('salary_min', e.target.value)} placeholder="80,000" /></div>
+                  <div><label className="label">Max Salary ($)</label><input className="input" type="number" value={form.salary_max} onChange={e => set('salary_max', e.target.value)} placeholder="150,000" /></div>
                 </div>
                 <div>
                   <label className="label">Remote Preference</label>
                   <div className="flex flex-wrap gap-2">
                     {REMOTE_OPTIONS.map(opt => (
                       <button key={opt} type="button" onClick={() => set('remote_preference', opt)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                          form.remote_preference === opt ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                        className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                          form.remote_preference === opt
+                            ? 'bg-brand-500 text-white border-brand-500'
+                            : 'bg-white text-ink-secondary border-surface-border hover:border-brand-300'
                         }`}>{opt}</button>
                     ))}
                   </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" id="relocate" checked={form.willing_to_relocate} onChange={e => set('willing_to_relocate', e.target.checked)} className="rounded" />
-                  <label htmlFor="relocate" className="text-sm text-gray-700">Willing to relocate</label>
                 </div>
                 <div>
                   <label className="label">Work Authorization</label>
                   <select className="input" value={form.work_authorization} onChange={e => set('work_authorization', e.target.value)}>
                     <option value="">Select...</option>
-                    {WORK_AUTH_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                    {WORK_AUTH_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="label">Availability</label>
                   <div className="flex flex-wrap gap-2">
-                    {AVAILABILITY_OPTIONS.map(opt => (
+                    {AVAILABILITY_OPTS.map(opt => (
                       <button key={opt} type="button" onClick={() => set('availability', opt)}
-                        className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                          form.availability === opt ? 'bg-primary-600 text-white border-primary-600' : 'bg-white text-gray-700 border-gray-300 hover:border-primary-400'
+                        className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                          form.availability === opt
+                            ? 'bg-brand-500 text-white border-brand-500'
+                            : 'bg-white text-ink-secondary border-surface-border hover:border-brand-300'
                         }`}>{opt}</button>
                     ))}
                   </div>
                 </div>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.willing_to_relocate}
+                    onChange={e => set('willing_to_relocate', e.target.checked)}
+                    className="w-4 h-4 accent-brand-500 rounded"
+                  />
+                  <span className="text-sm text-ink-primary">Willing to relocate</span>
+                </label>
               </div>
             )}
 
-            {/* Step 3 */}
+            {/* Step 3: Skills */}
             {step === 3 && (
               <div className="space-y-5">
                 <div className="grid grid-cols-2 gap-4">
@@ -238,7 +235,7 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
                     <label className="label">Education Level</label>
                     <select className="input" value={form.education_level} onChange={e => set('education_level', e.target.value)}>
                       <option value="">Select...</option>
-                      {EDUCATION_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+                      {EDUCATION_OPTS.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>
                   </div>
                 </div>
@@ -250,35 +247,50 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
               </div>
             )}
 
-            {/* Step 4 */}
+            {/* Step 4: Resume */}
             {step === 4 && (
               <div className="space-y-4">
-                <p className="text-sm text-gray-600">Upload your resume so the AI can tailor cover letters. PDF, DOCX, or TXT.</p>
-                <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-10 cursor-pointer transition-colors ${
-                  resumeFile ? 'border-primary-400 bg-primary-50' : 'border-gray-300 hover:border-primary-400 hover:bg-gray-50'
-                }`}>
-                  <Upload className={`w-10 h-10 mb-3 ${resumeFile ? 'text-primary-600' : 'text-gray-400'}`} />
+                <p className="text-sm text-ink-secondary">Upload your resume so the AI can tailor cover letters and fill out applications on your behalf.</p>
+                <label
+                  className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-10 cursor-pointer transition-colors ${
+                    dragOver ? 'border-brand-400 bg-brand-50' :
+                    resumeFile ? 'border-brand-300 bg-brand-50' :
+                    'border-surface-border hover:border-brand-300 hover:bg-brand-50/40'
+                  }`}
+                  onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={e => { e.preventDefault(); setDragOver(false); setResumeFile(e.dataTransfer.files?.[0] || null) }}
+                >
+                  <Upload className={`w-10 h-10 mb-3 ${resumeFile ? 'text-brand-500' : 'text-ink-tertiary'}`} />
                   {resumeFile ? (
-                    <><span className="font-medium text-primary-700">{resumeFile.name}</span><span className="text-xs text-gray-500 mt-1">{(resumeFile.size / 1024).toFixed(0)} KB</span></>
+                    <>
+                      <span className="font-semibold text-brand-700">{resumeFile.name}</span>
+                      <span className="text-xs text-ink-tertiary mt-1">{(resumeFile.size / 1024).toFixed(0)} KB</span>
+                    </>
                   ) : (
-                    <><span className="font-medium text-gray-700">Click to upload resume</span><span className="text-xs text-gray-400 mt-1">PDF, DOCX, or TXT · Max 10MB</span></>
+                    <>
+                      <span className="font-medium text-ink-primary">Click or drop your resume</span>
+                      <span className="text-xs text-ink-tertiary mt-1">PDF, DOCX, or TXT · Max 10MB</span>
+                    </>
                   )}
                   <input type="file" className="hidden" accept=".pdf,.docx,.doc,.txt" onChange={e => setResumeFile(e.target.files?.[0] || null)} />
                 </label>
-                {resumeFile && <button type="button" onClick={() => setResumeFile(null)} className="text-sm text-red-500 hover:text-red-700">Remove file</button>}
-                <p className="text-xs text-gray-400">You can also add your resume later from the dashboard.</p>
+                {resumeFile && (
+                  <button type="button" onClick={() => setResumeFile(null)} className="text-sm text-red-500 hover:text-red-600 font-medium">Remove file</button>
+                )}
+                <p className="text-xs text-ink-tertiary">You can also upload or update your resume later from the Dashboard.</p>
               </div>
             )}
 
-            {/* Step 5 */}
+            {/* Step 5: Common answers */}
             {step === 5 && (
               <div className="space-y-5">
-                <p className="text-sm text-gray-600">These answers help the AI personalize every application you send.</p>
+                <p className="text-sm text-ink-secondary">These pre-loaded answers help the AI personalize every application. You can update them anytime.</p>
                 {[
                   { key: 'tell_me_about_yourself', label: 'Tell me about yourself', placeholder: 'Summarize your background and goals...' },
-                  { key: 'biggest_strength', label: "What's your biggest strength?", placeholder: 'Problem-solving, communication...' },
-                  { key: 'why_this_role', label: 'Why are you interested in this type of role?', placeholder: 'What drives your interest...' },
-                  { key: 'why_leaving', label: 'Why are you looking for a new role?', placeholder: 'Looking for growth, new challenges...' },
+                  { key: 'biggest_strength',        label: "What's your biggest strength?",   placeholder: 'e.g. Problem-solving, leadership...' },
+                  { key: 'why_this_role',            label: 'Why are you interested in this type of role?', placeholder: 'What motivates you...' },
+                  { key: 'why_leaving',              label: 'Why are you looking for a new role?',          placeholder: 'Seeking growth, new challenges...' },
                 ].map(({ key, label, placeholder }) => (
                   <div key={key}>
                     <label className="label">{label}</label>
@@ -290,18 +302,18 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
               </div>
             )}
 
-            <div className="flex justify-between mt-8 pt-6 border-t border-gray-100">
+            <div className="flex justify-between mt-8 pt-6 border-t border-surface-border">
               <button type="button" onClick={() => setStep(s => s - 1)} disabled={step === 1}
-                className="btn-secondary flex items-center gap-2 disabled:invisible">
+                className="btn-ghost flex items-center gap-2 disabled:invisible">
                 <ChevronLeft className="w-4 h-4" /> Back
               </button>
               {step < STEPS.length ? (
-                <button type="button" onClick={() => setStep(s => s + 1)} disabled={!canProceed()} className="btn-primary flex items-center gap-2">
+                <button type="button" onClick={() => setStep(s => s + 1)} disabled={!canProceed()} className="btn-primary flex items-center gap-2 disabled:opacity-50">
                   Continue <ChevronRight className="w-4 h-4" />
                 </button>
               ) : (
-                <button type="button" onClick={handleSubmit} disabled={loading || !canProceed()} className="btn-primary flex items-center gap-2">
-                  {loading ? 'Setting up...' : 'Launch Dashboard'} <Sparkles className="w-4 h-4" />
+                <button type="button" onClick={handleSubmit} disabled={loading || !canProceed()} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+                  {loading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Setting up...</> : <><Sparkles className="w-4 h-4" />Launch Dashboard</>}
                 </button>
               )}
             </div>

@@ -1,19 +1,19 @@
 import React, { useState, useEffect } from 'react'
-import { Crosshair, Zap, MapPin, Briefcase, Brain, ChevronRight, Clock, CheckCircle, XCircle, AlertCircle, Lock, Eye, EyeOff } from 'lucide-react'
+import { Crosshair, Zap, MapPin, Briefcase, Brain, ChevronRight, Clock, CheckCircle, XCircle, AlertCircle, Lock, Eye, EyeOff, Sparkles } from 'lucide-react'
 import { useAppUser } from '../App'
 import HuntView from '../components/HuntView'
 import { startHunt, listHuntSessions, getResumes } from '../api/client'
 
 function StatusBadge({ status }) {
   const cfg = {
-    running:   { color: 'bg-primary-500/20 text-primary-300 border-primary-500/30', label: 'Running', icon: Zap },
-    complete:  { color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', label: 'Complete', icon: CheckCircle },
-    stopped:   { color: 'bg-white/10 text-primary-400 border-white/10', label: 'Stopped', icon: XCircle },
-    error:     { color: 'bg-red-500/20 text-red-300 border-red-500/30', label: 'Error', icon: AlertCircle },
-  }[status] || { color: 'bg-white/10 text-primary-400 border-white/10', label: status, icon: Clock }
+    running:  { color: 'bg-brand-50 text-brand-600 border-brand-100',       label: 'Running',  icon: Zap },
+    complete: { color: 'bg-green-50 text-green-700 border-green-100',        label: 'Complete', icon: CheckCircle },
+    stopped:  { color: 'bg-surface-hover text-ink-tertiary border-surface-border', label: 'Stopped',  icon: XCircle },
+    error:    { color: 'bg-red-50 text-red-600 border-red-100',              label: 'Error',    icon: AlertCircle },
+  }[status] || { color: 'bg-surface-hover text-ink-tertiary border-surface-border', label: status, icon: Clock }
   const Icon = cfg.icon
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-xs font-semibold ${cfg.color}`}>
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-pill border text-xs font-semibold ${cfg.color}`}>
       <Icon className="w-3 h-3" />{cfg.label}
     </span>
   )
@@ -25,7 +25,7 @@ function formatDate(iso) {
 }
 
 export default function HuntPage() {
-  const { appUser, refreshUser } = useAppUser()
+  const { appUser, refreshUser }     = useAppUser()
   const [activeHuntId, setActiveHuntId] = useState(null)
   const [sessions, setSessions]         = useState([])
   const [loading, setLoading]           = useState(false)
@@ -39,7 +39,8 @@ export default function HuntPage() {
   const targetLocations = appUser?.target_locations || []
   const skills          = appUser?.skills           || []
   const credits         = appUser?.credits ?? 0
-  const canHunt         = hasResume && credits >= 5
+  const isAdmin         = appUser?.is_admin
+  const canHunt         = hasResume && (isAdmin || credits >= 5)
 
   useEffect(() => {
     if (!appUser?.id) return
@@ -55,11 +56,10 @@ export default function HuntPage() {
   }, [activeHuntId])
 
   const handleStart = async () => {
-    setError(null)
-    setLoading(true)
+    setError(null); setLoading(true)
     try {
       const data = await startHunt({
-        linkedin_email: creds.linkedin_email || null,
+        linkedin_email:    creds.linkedin_email    || null,
         linkedin_password: creds.linkedin_password || null,
       })
       await refreshUser()
@@ -78,151 +78,156 @@ export default function HuntPage() {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
-      <div>
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-gold-500 to-gold-600 flex items-center justify-center shadow-gold">
-            <Crosshair className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="font-display font-bold text-2xl text-white">Autonomous Hunt</h1>
-            <p className="text-primary-400 text-sm">AI browses, decides, applies — you just watch</p>
-          </div>
+    <div className="p-8 max-w-3xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center">
+          <Crosshair className="w-5 h-5 text-white" />
+        </div>
+        <div>
+          <h1 className="font-bold text-2xl text-ink-primary">Autonomous Hunt</h1>
+          <p className="text-ink-secondary text-sm">AI browses, decides, and applies — you just watch live</p>
         </div>
       </div>
 
-      {/* Launch Card */}
+      {/* Launch card */}
       <div className="card p-6 space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="font-display font-bold text-lg text-white">Start a Hunt</h2>
-          <span className="text-xs text-primary-400 bg-white/8 border border-white/10 px-3 py-1 rounded-full">
-            Costs <span className="text-gold-400 font-bold">5 credits</span>
+          <h2 className="font-bold text-lg text-ink-primary">Start a Hunt</h2>
+          <span className="text-xs font-semibold bg-brand-50 text-brand-700 border border-brand-100 px-3 py-1 rounded-pill">
+            {isAdmin ? <><Sparkles className="w-3 h-3 inline mr-1" />Admin · Free</> : <>Costs <span className="text-brand-600">5 credits</span></>}
           </span>
         </div>
 
         {/* Profile summary */}
-        <div className="space-y-3">
+        <div className="space-y-3 p-4 bg-surface-hover rounded-xl">
           <div className="flex items-start gap-3">
-            <Briefcase className="w-4 h-4 text-primary-400 mt-0.5 flex-shrink-0" />
+            <Briefcase className="w-4 h-4 text-ink-tertiary mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs font-semibold text-primary-400 uppercase tracking-wide mb-1">Target Roles</p>
+              <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide mb-1.5">Target Roles</p>
               {targetRoles.length > 0
-                ? <div className="flex flex-wrap gap-1.5">{targetRoles.map(r => <span key={r} className="text-xs bg-primary-500/15 border border-primary-500/25 text-primary-300 px-2 py-0.5 rounded-lg">{r}</span>)}</div>
-                : <p className="text-sm text-primary-500 italic">No target roles set</p>}
+                ? <div className="flex flex-wrap gap-1.5">{targetRoles.map(r => <span key={r} className="text-xs bg-brand-50 border border-brand-100 text-brand-700 px-2.5 py-0.5 rounded-pill font-medium">{r}</span>)}</div>
+                : <p className="text-sm text-ink-tertiary italic">No target roles set — update in onboarding</p>
+              }
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <MapPin className="w-4 h-4 text-primary-400 mt-0.5 flex-shrink-0" />
+            <MapPin className="w-4 h-4 text-ink-tertiary mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs font-semibold text-primary-400 uppercase tracking-wide mb-1">Locations</p>
+              <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide mb-1.5">Locations</p>
               {targetLocations.length > 0
-                ? <div className="flex flex-wrap gap-1.5">{targetLocations.map(l => <span key={l} className="text-xs bg-primary-500/15 border border-primary-500/25 text-primary-300 px-2 py-0.5 rounded-lg">{l}</span>)}</div>
-                : <p className="text-sm text-primary-500 italic">No locations set</p>}
+                ? <div className="flex flex-wrap gap-1.5">{targetLocations.map(l => <span key={l} className="text-xs bg-brand-50 border border-brand-100 text-brand-700 px-2.5 py-0.5 rounded-pill font-medium">{l}</span>)}</div>
+                : <p className="text-sm text-ink-tertiary italic">No locations set</p>
+              }
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <Brain className="w-4 h-4 text-primary-400 mt-0.5 flex-shrink-0" />
+            <Brain className="w-4 h-4 text-ink-tertiary mt-0.5 flex-shrink-0" />
             <div>
-              <p className="text-xs font-semibold text-primary-400 uppercase tracking-wide mb-1">Key Skills</p>
+              <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wide mb-1.5">Key Skills</p>
               {skills.length > 0
                 ? <div className="flex flex-wrap gap-1.5">
-                    {skills.slice(0, 8).map(s => <span key={s} className="text-xs bg-white/8 border border-white/10 text-primary-300 px-2 py-0.5 rounded-lg">{s}</span>)}
-                    {skills.length > 8 && <span className="text-xs text-primary-500">+{skills.length - 8} more</span>}
+                    {skills.slice(0, 8).map(s => <span key={s} className="text-xs bg-surface-border text-ink-secondary px-2 py-0.5 rounded-pill">{s}</span>)}
+                    {skills.length > 8 && <span className="text-xs text-ink-tertiary">+{skills.length - 8} more</span>}
                   </div>
-                : <p className="text-sm text-primary-500 italic">No skills set</p>}
+                : <p className="text-sm text-ink-tertiary italic">No skills set</p>
+              }
             </div>
           </div>
         </div>
 
         {/* LinkedIn credentials */}
-        <div className="rounded-xl border border-white/10 p-4 space-y-3" style={{ background: 'rgba(255,255,255,0.03)' }}>
-          <div className="flex items-center gap-2 mb-1">
-            <Lock className="w-4 h-4 text-primary-400" />
-            <p className="text-sm font-semibold text-white">LinkedIn Login <span className="text-primary-500 font-normal text-xs">(optional but recommended)</span></p>
+        <div className="rounded-xl border border-surface-border p-4 space-y-3 bg-white">
+          <div className="flex items-center gap-2">
+            <Lock className="w-4 h-4 text-ink-tertiary" />
+            <p className="text-sm font-semibold text-ink-primary">LinkedIn Login <span className="text-ink-tertiary font-normal text-xs">(optional but recommended)</span></p>
           </div>
-          <p className="text-xs text-primary-500 leading-relaxed">
-            Without login the agent can only view public listings. With login it can use LinkedIn Easy Apply to submit applications directly.
-            Credentials are used only for this session and never stored.
+          <p className="text-xs text-ink-tertiary leading-relaxed">
+            Without login the agent sees public listings only. With login it uses LinkedIn Easy Apply to submit applications directly.
+            Credentials are used only for this session and <strong>never stored</strong>.
           </p>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="space-y-2">
             <input
               type="email"
               placeholder="LinkedIn email"
               value={creds.linkedin_email}
               onChange={e => setCreds(c => ({ ...c, linkedin_email: e.target.value }))}
-              className="bg-white/8 border border-white/15 rounded-xl px-3 py-2 text-sm text-white placeholder-primary-600 outline-none focus:border-primary-500 col-span-2"
+              className="input"
             />
-            <div className="relative col-span-2">
+            <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 placeholder="LinkedIn password"
                 value={creds.linkedin_password}
                 onChange={e => setCreds(c => ({ ...c, linkedin_password: e.target.value }))}
-                className="w-full bg-white/8 border border-white/15 rounded-xl px-3 py-2 pr-10 text-sm text-white placeholder-primary-600 outline-none focus:border-primary-500"
+                className="input pr-10"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(s => !s)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-primary-500 hover:text-primary-300"
-              >
+              <button type="button" onClick={() => setShowPassword(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-tertiary hover:text-ink-primary">
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Readiness checks */}
-        <div className="rounded-xl border border-white/8 divide-y divide-white/8">
-          <div className="flex items-center justify-between px-4 py-2.5 text-sm">
-            <span className="text-primary-300">Resume uploaded</span>
-            {hasResume ? <CheckCircle className="w-4 h-4 text-emerald-400" /> : <span className="text-red-400 text-xs font-semibold">Missing — upload in Dashboard</span>}
+        {/* Readiness checklist */}
+        <div className="rounded-xl border border-surface-border divide-y divide-surface-border overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 text-sm">
+            <span className="text-ink-secondary">Resume uploaded</span>
+            {hasResume
+              ? <CheckCircle className="w-4 h-4 text-green-500" />
+              : <span className="text-red-500 text-xs font-semibold">Missing — upload from Dashboard</span>
+            }
           </div>
-          <div className="flex items-center justify-between px-4 py-2.5 text-sm">
-            <span className="text-primary-300">Credits available</span>
-            <span className={credits >= 5 ? 'text-emerald-400 font-semibold' : 'text-red-400 font-semibold'}>{credits}{credits < 5 && ' (need 5)'}</span>
+          <div className="flex items-center justify-between px-4 py-3 text-sm">
+            <span className="text-ink-secondary">Credits available</span>
+            {isAdmin
+              ? <span className="text-brand-600 font-semibold text-xs">Admin · Unlimited</span>
+              : <span className={`font-semibold text-xs ${credits >= 5 ? 'text-green-600' : 'text-red-500'}`}>{credits} {credits < 5 && '(need 5)'}</span>
+            }
           </div>
         </div>
 
-        {error && <div className="rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm text-red-300">{error}</div>}
+        {error && (
+          <div className="rounded-xl bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">{error}</div>
+        )}
 
         <button
           onClick={handleStart}
           disabled={!canHunt || loading}
-          className={`w-full flex items-center justify-center gap-2 py-3 rounded-2xl font-bold text-base transition-all ${
-            canHunt && !loading ? 'btn-gold' : 'bg-white/8 text-primary-500 cursor-not-allowed border border-white/10'
-          }`}
+          className="w-full btn-primary py-3 text-base font-bold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {loading
-            ? <><div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />Starting Hunt...</>
+            ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />Starting Hunt...</>
             : <><Crosshair className="w-4 h-4" />Start Autonomous Hunt<ChevronRight className="w-4 h-4" /></>
           }
         </button>
       </div>
 
-      {/* Past Sessions */}
+      {/* Past sessions */}
       <div>
-        <h2 className="font-display font-bold text-lg text-white mb-4">Past Hunts</h2>
+        <h2 className="font-bold text-lg text-ink-primary mb-4">Past Hunts</h2>
         {sessionsLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />
+          <div className="flex justify-center py-12">
+            <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
           </div>
         ) : sessions.length === 0 ? (
-          <div className="card p-8 text-center">
-            <Crosshair className="w-10 h-10 text-primary-700 mx-auto mb-3" />
-            <p className="text-primary-400 text-sm">No hunts yet.</p>
+          <div className="card p-10 text-center">
+            <Crosshair className="w-10 h-10 text-ink-tertiary mx-auto mb-3 opacity-40" />
+            <p className="text-ink-secondary text-sm">No hunts yet. Start one above.</p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {sessions.map(s => (
               <div key={s.id} className="card p-4 flex items-center justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <StatusBadge status={s.status} />
-                    <span className="text-xs text-primary-500">{formatDate(s.started_at)}</span>
+                    <span className="text-xs text-ink-tertiary">{formatDate(s.started_at)}</span>
                   </div>
                   <div className="flex items-center gap-4 text-sm">
-                    <span className="text-primary-300">{s.jobs_found ?? 0} jobs found</span>
-                    <span className="text-emerald-400 font-semibold">{s.jobs_applied ?? 0} applied</span>
+                    <span className="text-ink-secondary">{s.jobs_found ?? 0} jobs evaluated</span>
+                    <span className="text-green-600 font-semibold">{s.jobs_applied ?? 0} applied</span>
                   </div>
                 </div>
               </div>
