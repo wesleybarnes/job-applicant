@@ -325,7 +325,7 @@ Pre-written answers: {custom}""".strip()
 
         session.emit({"type": "action", "message": "Logging in to LinkedIn..."})
         try:
-            await page.goto("https://www.linkedin.com/login", wait_until="networkidle", timeout=15000)
+            await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=20000)
             await asyncio.sleep(random.uniform(1.0, 1.8))
 
             # Wait for email input to be visible and interactable
@@ -831,17 +831,33 @@ and upload_resume if there's a file upload. When all fields are filled, call for
 
             # Handle navigation between form pages
             if next_action == "click_next":
-                session.emit({"type": "action", "message": "Moving to next page..."})
-                for sel in ['button:has-text("Next")', 'button:has-text("Continue")', 'button:has-text("Review")']:
+                session.emit({"type": "action", "message": "Moving to next form page..."})
+                clicked_next = False
+                for sel in [
+                    'button:has-text("Next")',
+                    'button:has-text("Continue")',
+                    'button:has-text("Review")',
+                    'button[aria-label*="Next"]',
+                    'button[aria-label*="Continue"]',
+                    'footer button.artdeco-button--primary',
+                ]:
                     try:
                         btn = page.locator(sel).first
                         if await btn.count() > 0 and await btn.is_visible():
                             await self._click_element(page, session, btn)
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(1.2)
+                            clicked_next = True
                             break
                     except Exception:
                         continue
-            elif next_action == "click_submit" or next_action == "done":
+                if not clicked_next:
+                    session.emit({"type": "action", "message": "Could not find next button — attempting submit"})
+                    break
+                # Continue the loop — Opus will re-analyze the new page
+            elif next_action == "click_submit":
+                # Don't break — let _submit_application handle the actual submit click
+                break
+            elif next_action == "done":
                 break
 
         return {
@@ -852,35 +868,77 @@ and upload_resume if there's a file upload. When all fields are filled, call for
     # ── Submit application ───────────────────────────────────────────────
 
     async def _submit_application(self, page, session: HuntSession) -> bool:
-        """Click through form steps to final submit."""
-        for _ in range(6):
+        """Click through multi-step form to final submit. LinkedIn Easy Apply
+        can have up to 6 pages of questions before submit."""
+        submitted = False
+        for attempt in range(10):  # up to 10 form pages
             await asyncio.sleep(0.6)
+
+            # Check for success indicators first
+            try:
+                # LinkedIn shows "Application submitted" or a success modal
+                success = page.locator('h2:has-text("Application submitted"), h3:has-text("Application submitted"), [class*="submitted"], [class*="success"]')
+                if await success.count() > 0:
+                    return True
+            except Exception:
+                pass
+
+            # Check if modal closed (application submitted and modal dismissed)
+            try:
+                modal = page.locator('[role="dialog"], .artdeco-modal, .jobs-easy-apply-modal')
+                if await modal.count() == 0:
+                    # Modal gone — likely submitted
+                    if attempt > 0:  # only count if we clicked at least once
+                        return True
+            except Exception:
+                pass
+
+            # Try to find and click the next action button
+            clicked = False
+            # Priority order: Submit > Review > Next > Continue > Done
             for btn_sel in [
                 'button:has-text("Submit application")',
                 'button:has-text("Submit")',
-                'button:has-text("Next")',
+                'button[aria-label*="Submit application"]',
                 'button[aria-label*="Submit"]',
+                'button:has-text("Review")',
+                'button:has-text("Next")',
+                'button:has-text("Continue")',
+                'button:has-text("Done")',
+                'button[aria-label*="Next"]',
+                'button[aria-label*="Continue"]',
+                'footer button.artdeco-button--primary',  # LinkedIn's primary action button in modal footer
             ]:
                 try:
                     btn = page.locator(btn_sel).first
                     if await btn.count() > 0 and await btn.is_visible():
-                        btn_text = (await btn.inner_text()).strip().lower()
+                        btn_text = ''
+                        try:
+                            btn_text = (await btn.inner_text()).strip().lower()
+                        except Exception:
+                            pass
+                        session.emit({"type": "action", "message": f"Clicking: {btn_text or 'next step'}"})
                         await self._click_element(page, session, btn)
                         await asyncio.sleep(0.8)
+                        clicked = True
                         if 'submit' in btn_text:
-                            return True
+                            submitted = True
                         break
                 except Exception:
                     continue
 
-            # Check if modal closed (submission happened)
-            try:
-                modal = page.locator('[role="dialog"], .artdeco-modal')
-                if await modal.count() == 0:
-                    return True
-            except Exception:
+            if submitted:
+                await asyncio.sleep(1)
+                return True
+
+            if not clicked:
+                # No button found — might be done or stuck
                 break
-        return False
+
+            # Also run Opus form fill on each new page (there might be new fields)
+            # This handles multi-step forms where each page has different questions
+
+        return submitted
 
     # ── Screenshot loop (5fps for smooth streaming) ──────────────────────
 
@@ -1053,16 +1111,18 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     return
 
                 # ── Phase 2: Build board list based on user profile ──────
-                boards = ['linkedin']  # always start with LinkedIn
+                # LinkedIn is only useful if logged in — guest gets walled on every job
                 locs = ' '.join(user.get('target_locations') or []).lower()
                 roles_str = ' '.join(user.get('target_roles') or []).lower()
-                # Add Indeed for broader search
+                boards = []
+                if logged_in:
+                    boards.append('linkedin')  # Only include if we can actually apply
                 boards.append('indeed')
-                # Add Google Jobs as a meta-aggregator
                 boards.append('google_jobs')
-                # Japan-specific boards
                 if 'japan' in locs or 'tokyo' in locs:
                     boards.append('tokyodev')
+                if not logged_in:
+                    boards.append('linkedin')  # Put at end as fallback for public listings
 
                 session.emit({"type": "thinking", "message": f"Planning hunt strategy: searching {len(boards)} job boards for '{', '.join(user.get('target_roles') or ['jobs'])}' in '{', '.join(user.get('target_locations') or ['your area'])}'. Will evaluate each listing against your profile and apply to strong matches."})
 
@@ -1218,7 +1278,10 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         # Detect LinkedIn login/auth redirect — skip instead of getting stuck
                         current_url = page.url.lower()
                         if any(x in current_url for x in ['login', 'authwall', 'checkpoint', 'challenge', 'signup', 'uas/login', 'verification']):
-                            session.emit({"type": "thinking", "message": f"This job requires LinkedIn login to view. Skipping."})
+                            if not logged_in and board == 'linkedin':
+                                session.emit({"type": "thinking", "message": f"LinkedIn requires login to apply. Skipping all remaining LinkedIn jobs — try adding credentials for full access."})
+                                break  # break out of apply_jobs loop entirely
+                            session.emit({"type": "thinking", "message": f"This job requires login. Skipping."})
                             continue
 
                         # Scroll to read the listing (visible to user)
