@@ -54,7 +54,13 @@ export default function HuntView({ huntId, onClose }) {
     return () => es.close()
   }, [huntId])
 
-  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight }, [log, decisions, tab])
+  // Only auto-scroll if user is already near the bottom (not reading old entries)
+  useEffect(() => {
+    const el = logRef.current
+    if (!el) return
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    if (isNearBottom) el.scrollTop = el.scrollHeight
+  }, [log, decisions, tab])
   useEffect(() => { if (status === 'paused') { setInteractMode('click'); setTimeout(() => hiddenKeyInputRef.current?.focus(), 50) } }, [status])
 
   const handleEvent = useCallback((event) => {

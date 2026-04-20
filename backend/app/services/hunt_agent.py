@@ -273,25 +273,49 @@ Pre-written answers: {custom}""".strip()
 
         session.emit({"type": "action", "message": "Logging in to LinkedIn..."})
         try:
-            await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=20000)
-            await asyncio.sleep(1.5)
-            # Type credentials with human-like delay
-            await page.locator('input[name="session_key"]').click()
-            await page.keyboard.type(email, delay=25)
+            await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=15000)
+            await asyncio.sleep(1)
+
+            # Check if login form is actually present
+            email_input = page.locator('input[name="session_key"], input[id="username"]')
+            if await email_input.count() == 0:
+                session.emit({"type": "action", "message": "⚠ Login form not found — continuing as guest"})
+                return False
+
+            await email_input.first.click()
+            await email_input.first.fill(email)
+            await asyncio.sleep(0.2)
+
+            pass_input = page.locator('input[name="session_password"], input[id="password"]')
+            if await pass_input.count() == 0:
+                session.emit({"type": "action", "message": "⚠ Password field not found — continuing as guest"})
+                return False
+
+            await pass_input.first.click()
+            await pass_input.first.fill(password)
             await asyncio.sleep(0.3)
-            await page.locator('input[name="session_password"]').click()
-            await page.keyboard.type(password, delay=25)
-            await asyncio.sleep(0.5)
-            await page.click('button[type="submit"]')
+
+            submit_btn = page.locator('button[type="submit"], button[aria-label="Sign in"]')
+            if await submit_btn.count() > 0:
+                await submit_btn.first.click()
+            else:
+                await page.keyboard.press("Enter")
+
             await asyncio.sleep(3)
-            if "feed" in page.url or "checkpoint" in page.url or "home" in page.url:
+
+            # Only count as success if we reach the feed — NOT checkpoint/verification
+            current = page.url
+            if "feed" in current or "/in/" in current or "mynetwork" in current:
                 session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
                 return True
+            elif "checkpoint" in current or "challenge" in current or "verification" in current:
+                session.emit({"type": "thinking", "message": "LinkedIn requires security verification (CAPTCHA/2FA). Cannot bypass — continuing as guest. Tip: log in on your browser first to reduce challenges."})
+                return False
             else:
-                session.emit({"type": "action", "message": "⚠ LinkedIn login may have failed — continuing as guest"})
+                session.emit({"type": "action", "message": "⚠ Login unclear — continuing as guest"})
                 return False
         except Exception as e:
-            session.emit({"type": "action", "message": f"LinkedIn login error: {str(e)[:60]}"})
+            session.emit({"type": "action", "message": f"Login failed: {str(e)[:60]} — continuing as guest"})
             return False
 
     # ── Extract jobs from page DOM (zero AI cost) ────────────────────────
@@ -708,19 +732,61 @@ and upload_resume if there's a file upload. When all fields are filled, call for
     # ── Screenshot loop (5fps for smooth streaming) ──────────────────────
 
     async def _screenshot_loop(self, page, session: HuntSession):
-        """Stream screenshots at ~10fps using JPEG for speed."""
-        while not session._stopped:
-            try:
-                # JPEG at quality 55 is ~5x smaller than PNG → faster SSE transfer
-                jpg = await page.screenshot(full_page=False, type="jpeg", quality=55)
-                b64 = base64.b64encode(jpg).decode()
-                meta = {}
-                if session.cursor_x is not None:
-                    meta = {"cx": session.cursor_x, "cy": session.cursor_y}
-                session.emit({"type": "screenshot", "data": b64, "fmt": "jpeg", **meta})
-            except Exception:
-                pass
-            await asyncio.sleep(0.1)  # 10fps for real-time feel
+        """
+        High-performance screenshot streaming using CDP screencast.
+        Falls back to manual JPEG screenshots if CDP isn't available.
+        """
+        cdp = None
+        try:
+            cdp = await page.context.new_cdp_session(page)
+            # Use CDP Page.screencastFrame for native browser streaming
+            # This is dramatically faster than page.screenshot() — the browser
+            # encodes JPEG internally and pushes frames without round-trip latency
+            frame_queue = asyncio.Queue(maxsize=3)
+
+            def on_frame(params):
+                try:
+                    frame_queue.put_nowait(params)
+                except asyncio.QueueFull:
+                    pass  # drop frame if consumer is slow
+
+            cdp.on("Page.screencastFrame", on_frame)
+            await cdp.send("Page.startScreencast", {
+                "format": "jpeg",
+                "quality": 50,
+                "maxWidth": 1280,
+                "maxHeight": 900,
+                "everyNthFrame": 1,
+            })
+
+            while not session._stopped:
+                try:
+                    params = await asyncio.wait_for(frame_queue.get(), timeout=1.0)
+                    # Acknowledge frame so browser sends next one
+                    await cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
+                    meta = {}
+                    if session.cursor_x is not None:
+                        meta = {"cx": session.cursor_x, "cy": session.cursor_y}
+                    session.emit({"type": "screenshot", "data": params["data"], "fmt": "jpeg", **meta})
+                except asyncio.TimeoutError:
+                    continue
+                except Exception:
+                    break
+
+            await cdp.send("Page.stopScreencast")
+        except Exception:
+            # Fallback: manual screenshot loop if CDP fails
+            while not session._stopped:
+                try:
+                    jpg = await page.screenshot(full_page=False, type="jpeg", quality=50)
+                    b64 = base64.b64encode(jpg).decode()
+                    meta = {}
+                    if session.cursor_x is not None:
+                        meta = {"cx": session.cursor_x, "cy": session.cursor_y}
+                    session.emit({"type": "screenshot", "data": b64, "fmt": "jpeg", **meta})
+                except Exception:
+                    pass
+                await asyncio.sleep(0.12)
 
     # ── Main hunt loop ───────────────────────────────────────────────────
 
@@ -930,10 +996,10 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             session.emit({"type": "action", "message": f"Could not open job page — {str(e)[:50]}"})
                             continue
 
-                        # Detect LinkedIn login redirect — skip instead of getting stuck
-                        current_url = page.url
-                        if 'linkedin.com/login' in current_url or 'linkedin.com/checkpoint' in current_url or 'authwall' in current_url:
-                            session.emit({"type": "thinking", "message": f"LinkedIn requires login to view this job. Skipping — add LinkedIn credentials for full access."})
+                        # Detect LinkedIn login/auth redirect — skip instead of getting stuck
+                        current_url = page.url.lower()
+                        if any(x in current_url for x in ['login', 'authwall', 'checkpoint', 'challenge', 'signup', 'uas/login', 'verification']):
+                            session.emit({"type": "thinking", "message": f"This job requires LinkedIn login to view. Skipping."})
                             continue
 
                         # Scroll to read the listing (visible to user)

@@ -15,8 +15,8 @@ export const useAppUser = () => useContext(AppUserContext)
 
 function Spinner() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface-bg">
-      <div className="animate-spin w-7 h-7 border-[2.5px] border-surface-border border-t-brand-500 rounded-full" />
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#09090B' }}>
+      <div className="animate-spin w-6 h-6 border-2 border-surface-border border-t-brand-500 rounded-full" />
     </div>
   )
 }
@@ -24,9 +24,9 @@ function Spinner() {
 function BackendError({ error, onRetry }) {
   const { signOut } = useAuth()
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-surface-bg">
-      <div className="text-center max-w-md card p-10">
-        <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center mx-auto mb-5">
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#09090B' }}>
+      <div className="text-center max-w-md card p-8">
+        <div className="w-12 h-12 rounded-xl bg-red-500/10 flex items-center justify-center mx-auto mb-4">
           <span className="text-2xl">⚠️</span>
         </div>
         <h2 className="font-bold text-ink-primary text-xl mb-2">Can't reach the server</h2>
