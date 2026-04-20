@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,93 +7,111 @@
 @layer base {
   * { box-sizing: border-box; }
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #09090B;
-    color: #FAFAFA;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+    background: #050505;
+    color: #F5F5F5;
     -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
 }
 
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
-           font-medium text-sm text-white
-           px-4 py-2 rounded-lg
-           transition-all duration-150 cursor-pointer select-none;
-    background: #14B8A6;
+           font-medium text-sm text-black
+           px-4 py-2 rounded-full
+           transition-all duration-200 cursor-pointer select-none;
+    background: #F59E0B;
   }
-  .btn-primary:hover { background: #0D9488; }
-  .btn-primary:active { background: #0F766E; transform: scale(0.98); }
-  .btn-primary:disabled { @apply opacity-40 cursor-not-allowed; transform: none; }
+  .btn-primary:hover { background: #FBBF24; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(245,158,11,0.25); }
+  .btn-primary:active { transform: scale(0.97); }
+  .btn-primary:disabled { @apply opacity-40 cursor-not-allowed; transform: none; box-shadow: none; }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
            font-medium text-sm text-ink-secondary
-           px-4 py-2 rounded-lg
-           transition-all duration-150 cursor-pointer select-none;
-    background: #18181B;
-    border: 1px solid #27272A;
+           px-4 py-2 rounded-full
+           transition-all duration-200 cursor-pointer select-none;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08);
   }
-  .btn-secondary:hover { background: #27272A; color: #FAFAFA; }
+  .btn-secondary:hover { background: rgba(255,255,255,0.08); color: #F5F5F5; border-color: rgba(255,255,255,0.12); }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2
            font-medium text-sm text-ink-tertiary
-           px-3 py-2 rounded-lg
-           hover:bg-surface-hover hover:text-ink-primary
-           transition-all duration-150 cursor-pointer;
+           px-3 py-2 rounded-full
+           hover:text-ink-primary hover:bg-white/5
+           transition-all duration-200 cursor-pointer;
   }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2
            font-medium text-sm text-white
-           px-4 py-2 rounded-lg transition-all duration-150;
+           px-4 py-2 rounded-full transition-all duration-200;
     background: #DC2626;
   }
-  .btn-danger:hover { background: #B91C1C; }
+  .btn-danger:hover { background: #EF4444; }
 
   .btn-gold {
     @apply inline-flex items-center justify-center gap-2
-           font-medium text-sm text-white
-           px-4 py-2 rounded-lg transition-all duration-150;
-    background: #14B8A6;
+           font-medium text-sm text-black
+           px-4 py-2 rounded-full transition-all duration-200;
+    background: #F59E0B;
   }
-  .btn-gold:hover { background: #0D9488; }
+  .btn-gold:hover { background: #FBBF24; }
 
   .card {
-    background: #0F0F12;
-    border: 1px solid #27272A;
-    border-radius: 12px;
+    background: rgba(10,10,10,0.8);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 16px;
   }
 
   .input {
-    @apply w-full rounded-lg px-3 py-2 text-sm
+    @apply w-full rounded-xl px-3.5 py-2.5 text-sm
            text-ink-primary placeholder-ink-tertiary
-           outline-none transition-all duration-150;
-    background: #18181B;
-    border: 1px solid #27272A;
+           outline-none transition-all duration-200;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
   }
-  .input:focus { border-color: #14B8A6; box-shadow: 0 0 0 2px rgba(20,184,166,0.1); }
+  .input:focus { border-color: rgba(245,158,11,0.5); box-shadow: 0 0 0 2px rgba(245,158,11,0.08); }
 
-  .label { @apply block text-xs font-medium text-ink-secondary mb-1.5 uppercase tracking-wider; }
+  .label { @apply block text-xs font-medium text-ink-secondary mb-1.5; }
 
-  .badge { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium; }
+  .badge { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium; }
+
+  /* Floating panels — the signature look */
+  .panel {
+    background: rgba(10,10,10,0.7);
+    backdrop-filter: blur(40px) saturate(150%);
+    -webkit-backdrop-filter: blur(40px) saturate(150%);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
+  }
+
+  /* Ambient orb */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(80px);
+    pointer-events: none;
+    z-index: 0;
+  }
 }
 
-/* Scrollbar — minimal */
-::-webkit-scrollbar { width: 4px; height: 4px; }
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #27272A; border-radius: 2px; }
-::-webkit-scrollbar-thumb:hover { background: #3F3F46; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 
 /* Shimmer */
-@keyframes shimmer { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }
 .text-shimmer {
-  background: linear-gradient(90deg, #14B8A6, #5EEAD4, #14B8A6);
+  background: linear-gradient(90deg, #F59E0B, #FCD34D, #F59E0B);
   background-size: 200% auto;
   animation: shimmer 3s linear infinite;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+@keyframes shimmer { 0% { background-position: 0% center; } 100% { background-position: 200% center; } }

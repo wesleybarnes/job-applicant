@@ -263,8 +263,10 @@ Pre-written answers: {custom}""".strip()
                 j.setdefault('reason', 'Could not evaluate')
         return jobs
 
-    # ── LinkedIn login ───────────────────────────────────────────────────
+    # ── LinkedIn login (human-like, stealth) ────────────────────────────
     async def _linkedin_login(self, page, user: dict, session: HuntSession) -> bool:
+        import random
+
         email    = user.get('linkedin_email')
         password = user.get('linkedin_password')
         if not email or not password:
@@ -273,49 +275,111 @@ Pre-written answers: {custom}""".strip()
 
         session.emit({"type": "action", "message": "Logging in to LinkedIn..."})
         try:
-            await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=15000)
-            await asyncio.sleep(1)
+            await page.goto("https://www.linkedin.com/login", wait_until="networkidle", timeout=15000)
+            await asyncio.sleep(random.uniform(1.0, 1.8))
 
-            # Check if login form is actually present
-            email_input = page.locator('input[name="session_key"], input[id="username"]')
-            if await email_input.count() == 0:
+            # Wait for email input to be visible and interactable
+            email_sel = 'input[name="session_key"], input[id="username"]'
+            try:
+                await page.wait_for_selector(email_sel, state="visible", timeout=5000)
+            except Exception:
                 session.emit({"type": "action", "message": "⚠ Login form not found — continuing as guest"})
                 return False
 
-            await email_input.first.click()
-            await email_input.first.fill(email)
-            await asyncio.sleep(0.2)
+            email_input = page.locator(email_sel).first
 
-            pass_input = page.locator('input[name="session_password"], input[id="password"]')
+            # Move mouse to email field like a human
+            box = await email_input.bounding_box()
+            if box:
+                await page.mouse.move(
+                    box['x'] + random.uniform(10, box['width'] - 10),
+                    box['y'] + random.uniform(5, box['height'] - 5),
+                    steps=random.randint(8, 15)
+                )
+                await asyncio.sleep(random.uniform(0.1, 0.3))
+
+            await email_input.click()
+            await asyncio.sleep(random.uniform(0.2, 0.4))
+
+            # Type email character by character with human-like variable delay
+            for char in email:
+                await page.keyboard.type(char, delay=random.randint(30, 80))
+                if random.random() < 0.05:  # occasional longer pause
+                    await asyncio.sleep(random.uniform(0.1, 0.2))
+            await asyncio.sleep(random.uniform(0.3, 0.6))
+
+            # Tab to password field (more human than clicking)
+            await page.keyboard.press("Tab")
+            await asyncio.sleep(random.uniform(0.3, 0.5))
+
+            # Verify password field is focused — if not, click it
+            pass_sel = 'input[name="session_password"], input[id="password"]'
+            pass_input = page.locator(pass_sel).first
             if await pass_input.count() == 0:
                 session.emit({"type": "action", "message": "⚠ Password field not found — continuing as guest"})
                 return False
 
-            await pass_input.first.click()
-            await pass_input.first.fill(password)
-            await asyncio.sleep(0.3)
+            # Check if password field has focus, if not click it
+            is_focused = await page.evaluate('''() => {
+                const el = document.querySelector('input[name="session_password"], input[id="password"]');
+                return el === document.activeElement;
+            }''')
+            if not is_focused:
+                box = await pass_input.bounding_box()
+                if box:
+                    await page.mouse.move(
+                        box['x'] + random.uniform(10, box['width'] - 10),
+                        box['y'] + random.uniform(5, box['height'] - 5),
+                        steps=random.randint(8, 12)
+                    )
+                await pass_input.click()
+                await asyncio.sleep(random.uniform(0.2, 0.4))
 
-            submit_btn = page.locator('button[type="submit"], button[aria-label="Sign in"]')
+            # Type password character by character
+            for char in password:
+                await page.keyboard.type(char, delay=random.randint(25, 70))
+            await asyncio.sleep(random.uniform(0.4, 0.8))
+
+            # Click sign in button (more human than pressing Enter)
+            submit_btn = page.locator('button[type="submit"], button[data-litms-control-urn*="login-submit"]').first
             if await submit_btn.count() > 0:
-                await submit_btn.first.click()
+                box = await submit_btn.bounding_box()
+                if box:
+                    await page.mouse.move(
+                        box['x'] + random.uniform(10, box['width'] - 10),
+                        box['y'] + random.uniform(5, box['height'] - 5),
+                        steps=random.randint(6, 12)
+                    )
+                    await asyncio.sleep(random.uniform(0.1, 0.3))
+                await submit_btn.click()
             else:
                 await page.keyboard.press("Enter")
 
-            await asyncio.sleep(3)
+            # Wait for navigation
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                await asyncio.sleep(3)
 
-            # Only count as success if we reach the feed — NOT checkpoint/verification
+            # Check result
             current = page.url
-            if "feed" in current or "/in/" in current or "mynetwork" in current:
+            if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
                 session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
                 return True
-            elif "checkpoint" in current or "challenge" in current or "verification" in current:
-                session.emit({"type": "thinking", "message": "LinkedIn requires security verification (CAPTCHA/2FA). Cannot bypass — continuing as guest. Tip: log in on your browser first to reduce challenges."})
+            elif any(x in current for x in ["checkpoint", "challenge", "verification", "two-step"]):
+                session.emit({"type": "thinking", "message": "LinkedIn requires verification (CAPTCHA/2FA). Continuing as guest. Try: pause the hunt, complete verification manually, then resume."})
                 return False
             else:
-                session.emit({"type": "action", "message": "⚠ Login unclear — continuing as guest"})
+                # Could be a slow redirect — wait a bit more
+                await asyncio.sleep(2)
+                current = page.url
+                if any(x in current for x in ["feed", "/in/", "mynetwork"]):
+                    session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
+                    return True
+                session.emit({"type": "action", "message": f"⚠ Login result unclear (at: {current[:60]}) — continuing as guest"})
                 return False
         except Exception as e:
-            session.emit({"type": "action", "message": f"Login failed: {str(e)[:60]} — continuing as guest"})
+            session.emit({"type": "action", "message": f"Login failed: {str(e)[:80]} — continuing as guest"})
             return False
 
     # ── Extract jobs from page DOM (zero AI cost) ────────────────────────
@@ -803,22 +867,88 @@ and upload_resume if there's a file upload. When all fields are filled, call for
             browser = await pw.chromium.launch(
                 headless=True,
                 args=[
-                    '--no-sandbox', '--disable-dev-shm-usage',
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',
                     '--disable-blink-features=AutomationControlled',
-                    '--window-size=1280,900', '--disable-extensions',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--window-size=1280,900',
+                    '--disable-extensions',
+                    '--disable-infobars',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
                 ],
             )
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 900},
-                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
                 locale="en-US",
                 timezone_id="America/New_York",
+                color_scheme="light",
+                has_touch=False,
+                java_script_enabled=True,
+                permissions=["geolocation"],
             )
+            # Comprehensive stealth — pass LinkedIn's bot detection
             await context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver',    { get: () => undefined });
-                Object.defineProperty(navigator, 'plugins',      { get: () => [1,2,3,4,5] });
-                Object.defineProperty(navigator, 'languages',    { get: () => ['en-US', 'en'] });
-                window.chrome = { runtime: {} };
+                // Remove webdriver flag
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                delete navigator.__proto__.webdriver;
+
+                // Chrome runtime
+                window.chrome = { runtime: { onMessage: { addListener: () => {} }, sendMessage: () => {} }, loadTimes: () => ({}) };
+
+                // Plugins (real Chrome has 5)
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => {
+                        const plugins = [
+                            { name: 'Chrome PDF Plugin', filename: 'internal-pdf-viewer' },
+                            { name: 'Chrome PDF Viewer', filename: 'mhjfbmdgcfjbbpaeojofohoefgiehjai' },
+                            { name: 'Native Client', filename: 'internal-nacl-plugin' },
+                            { name: 'Chromium PDF Viewer', filename: 'internal-pdf-viewer' },
+                            { name: 'Microsoft Edge PDF Viewer', filename: 'internal-pdf-viewer' },
+                        ];
+                        plugins.length = 5;
+                        return plugins;
+                    }
+                });
+
+                // Languages
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+
+                // Platform
+                Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' });
+
+                // Hardware concurrency (real value)
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+
+                // Device memory
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+
+                // Permissions API — prevent "denied" detection
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (params) => (
+                    params.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission })
+                        : originalQuery(params)
+                );
+
+                // WebGL vendor/renderer (real Chrome on Mac)
+                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                WebGLRenderingContext.prototype.getParameter = function(parameter) {
+                    if (parameter === 37445) return 'Google Inc. (Apple)';
+                    if (parameter === 37446) return 'ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)';
+                    return getParameter.call(this, parameter);
+                };
+
+                // Connection type
+                Object.defineProperty(navigator, 'connection', {
+                    get: () => ({ effectiveType: '4g', rtt: 50, downlink: 10, saveData: false })
+                });
+
+                // Prevent iframe detection
+                Object.defineProperty(document, 'hidden', { get: () => false });
+                Object.defineProperty(document, 'visibilityState', { get: () => 'visible' });
             """)
             page = await context.new_page()
             session.page = page
