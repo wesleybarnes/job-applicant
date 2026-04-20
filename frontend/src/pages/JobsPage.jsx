@@ -10,94 +10,142 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [savedIds, setSavedIds] = useState(new Set())
-  const [tab, setTab] = useState('discover')
-  const [error, setError] = useState(null)
-  const [showManual, setShowManual] = useState(false)
-  const [manual, setManual] = useState({ title: '', company: '', location: '', url: '', description: '' })
+  const [selectedJob, setSelectedJob] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [searching, setSearching] = useState(false)
 
   useEffect(() => { discover() }, [userId])
+  useEffect(() => { if (jobs.length > 0 && !selectedJob) setSelectedJob(jobs[0]) }, [jobs])
 
-  const discover = async () => { setLoading(true); try { setJobs(await discoverJobs()) } catch { try { setJobs(await listJobs({ limit: 50 })) } catch {} } finally { setLoading(false) } }
+  const discover = async () => { setLoading(true); try { const d = await discoverJobs(); setJobs(d) } catch { try { setJobs(await listJobs({ limit: 50 })) } catch {} } finally { setLoading(false) } }
   const handleRefresh = async () => { setRefreshing(true); try { const d = await discoverJobs(); setJobs(prev => { const ids = new Set(prev.map(j => j.id)); return [...d.filter(j => !ids.has(j.id)), ...prev] }) } catch {} finally { setRefreshing(false) } }
   const handleSearch = async () => { if (!searchQuery) return; setSearching(true); try { const r = await searchJobs({ query: searchQuery }, userId); setJobs(prev => { const ids = new Set(prev.map(j => j.id)); return [...r.filter(j => !ids.has(j.id)), ...prev] }); setSearchQuery('') } catch {} finally { setSearching(false) } }
   const handleSave = async (jobId) => { if (savedIds.has(jobId)) return; try { await createApplication({ user_id: userId, job_id: jobId }); setSavedIds(prev => new Set([...prev, jobId])) } catch (e) { if (e.response?.status === 400) setSavedIds(prev => new Set([...prev, jobId])) } }
-  const handleManualAdd = async () => { try { const job = await createJob({ ...manual, source: 'manual' }); setJobs(prev => [job, ...prev]); setManual({ title: '', company: '', location: '', url: '', description: '' }); setShowManual(false) } catch {} }
-
-  const displayJobs = tab === 'saved' ? jobs.filter(j => savedIds.has(j.id)) : jobs
 
   return (
-    <div className="p-6 max-w-4xl animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-semibold text-ink-primary">Jobs</h1>
-          <p className="text-xs text-ink-tertiary mt-0.5">
-            {appUser?.target_roles?.length ? `Based on: ${appUser.target_roles.join(', ')}` : 'Set target roles in profile'}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setShowManual(v => !v)} className="btn-secondary text-xs py-1.5">{showManual ? <X className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}</button>
-          <button onClick={handleRefresh} disabled={refreshing} className="btn-primary text-xs py-1.5"><RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} /></button>
-        </div>
-      </div>
-
-      {/* Tabs + search */}
-      <div className="flex items-center gap-4 mb-4 border-b border-surface-border">
-        {['discover', 'saved'].map(t => (
-          <button key={t} onClick={() => setTab(t)} className={`pb-2.5 text-xs font-medium border-b -mb-px transition-colors ${tab === t ? 'text-ink-primary border-brand-400' : 'text-ink-tertiary border-transparent'}`}>
-            {t === 'discover' ? `All (${jobs.length})` : `Saved (${savedIds.size})`}
-          </button>
-        ))}
-        <div className="flex-1" />
-        <div className="flex items-center gap-1.5 pb-1.5">
-          <input className="input py-1 px-2.5 text-xs w-36" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
-          {searchQuery && <button onClick={handleSearch} disabled={searching} className="btn-primary py-1 px-2 text-xs">{searching ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />}</button>}
-        </div>
-      </div>
-
-      {showManual && (
-        <div className="card p-4 mb-4">
-          <div className="grid grid-cols-2 gap-2 mb-2">
-            <input className="input text-xs" placeholder="Title *" value={manual.title} onChange={e => setManual(m => ({ ...m, title: e.target.value }))} />
-            <input className="input text-xs" placeholder="Company *" value={manual.company} onChange={e => setManual(m => ({ ...m, company: e.target.value }))} />
-            <input className="input text-xs" placeholder="Location" value={manual.location} onChange={e => setManual(m => ({ ...m, location: e.target.value }))} />
-            <input className="input text-xs" placeholder="URL" value={manual.url} onChange={e => setManual(m => ({ ...m, url: e.target.value }))} />
+    <div className="h-[calc(100vh-48px)] flex animate-fade-in">
+      {/* ── Left panel: job list ────────────────────────────────────── */}
+      <div className="w-[360px] flex-shrink-0 border-r flex flex-col" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        {/* Search + controls */}
+        <div className="p-3 border-b flex items-center gap-2" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-ink-tertiary" />
+            <input className="input py-1.5 pl-8 text-[12px]" placeholder="Search jobs..." value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSearch()} />
           </div>
-          <textarea className="input text-xs min-h-[50px] resize-y mb-2" placeholder="Description..." value={manual.description} onChange={e => setManual(m => ({ ...m, description: e.target.value }))} />
-          <button onClick={handleManualAdd} disabled={!manual.title || !manual.company} className="btn-primary text-xs py-1.5">Add</button>
+          <button onClick={handleRefresh} disabled={refreshing} className="p-1.5 rounded-md hover:bg-white/[0.05] text-ink-tertiary hover:text-ink-secondary transition-colors">
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
         </div>
-      )}
 
-      {loading ? (
-        <div className="flex justify-center py-16"><Loader2 className="w-4 h-4 animate-spin text-ink-tertiary" /></div>
-      ) : displayJobs.length === 0 ? (
-        <div className="text-center py-16"><Building2 className="w-8 h-8 mx-auto mb-2 text-ink-tertiary opacity-20" /><p className="text-sm text-ink-tertiary">{tab === 'saved' ? 'No saved jobs' : 'No jobs found'}</p></div>
-      ) : (
-        <div className="space-y-1">
-          {displayJobs.map(job => (
-            <div key={job.id} className="flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-surface-hover/50 transition-colors group">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium text-ink-primary truncate">{job.title}</span>
-                  {job.remote_type === 'remote' && <span className="badge bg-brand-500/10 text-brand-400 text-[10px]">remote</span>}
-                </div>
-                <div className="flex items-center gap-3 text-xs text-ink-tertiary mt-0.5">
-                  <span>{job.company}</span>
-                  {job.location && <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3" />{job.location}</span>}
-                  {job.salary_min && <span><DollarSign className="w-3 h-3 inline" />{Math.round(job.salary_min/1000)}k</span>}
+        {/* Job list */}
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 className="w-4 h-4 animate-spin text-ink-tertiary" /></div>
+          ) : jobs.length === 0 ? (
+            <div className="p-8 text-center">
+              <Building2 className="w-6 h-6 mx-auto mb-2 text-ink-tertiary opacity-30" />
+              <p className="text-[12px] text-ink-tertiary">No jobs found</p>
+            </div>
+          ) : (
+            <div>
+              {jobs.map(job => (
+                <button key={job.id} onClick={() => setSelectedJob(job)}
+                  className={`w-full text-left px-4 py-3 border-b transition-colors ${selectedJob?.id === job.id ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'}`}
+                  style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className={`text-[13px] font-medium truncate ${selectedJob?.id === job.id ? 'text-ink-primary' : 'text-ink-secondary'}`}>{job.title}</p>
+                      <p className="text-[11px] text-ink-tertiary truncate mt-0.5">{job.company}{job.location ? ` · ${job.location}` : ''}</p>
+                    </div>
+                    {job.match_score >= 70 && <span className="text-[10px] text-brand-400 font-medium flex-shrink-0">{Math.round(job.match_score)}%</span>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer info */}
+        <div className="p-3 border-t text-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <p className="text-[11px] text-ink-tertiary">{jobs.length} jobs · Based on your profile</p>
+        </div>
+      </div>
+
+      {/* ── Right panel: job detail ────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto">
+        {selectedJob ? (
+          <div className="max-w-2xl p-8 animate-fade-in" key={selectedJob.id}>
+            {/* Header */}
+            <div className="flex items-start justify-between mb-6">
+              <div>
+                <h1 className="text-[20px] font-medium text-ink-primary tracking-tight mb-1">{selectedJob.title}</h1>
+                <p className="text-[14px] text-ink-secondary">{selectedJob.company}</p>
+                <div className="flex items-center gap-3 mt-2 text-[12px] text-ink-tertiary">
+                  {selectedJob.location && <span className="flex items-center gap-1"><MapPin className="w-3 h-3" />{selectedJob.location}</span>}
+                  {selectedJob.remote_type && <span className="px-1.5 py-0.5 rounded text-[11px] bg-white/[0.05]">{selectedJob.remote_type}</span>}
+                  {(selectedJob.salary_min || selectedJob.salary_max) && (
+                    <span className="flex items-center gap-1">
+                      <DollarSign className="w-3 h-3" />
+                      {selectedJob.salary_min ? `${Math.round(selectedJob.salary_min/1000)}k` : ''}
+                      {selectedJob.salary_min && selectedJob.salary_max ? '–' : ''}
+                      {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max/1000)}k` : ''}
+                    </span>
+                  )}
                 </div>
               </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {job.url && <a href={job.url} target="_blank" rel="noopener noreferrer" className="p-1.5 text-ink-tertiary hover:text-ink-primary rounded"><ExternalLink className="w-3.5 h-3.5" /></a>}
-                <button onClick={() => handleSave(job.id)} className={`p-1.5 rounded ${savedIds.has(job.id) ? 'text-brand-400' : 'text-ink-tertiary hover:text-brand-400'}`}>
-                  {savedIds.has(job.id) ? <BookmarkCheck className="w-3.5 h-3.5" /> : <Bookmark className="w-3.5 h-3.5" />}
+
+              {/* Actions */}
+              <div className="flex items-center gap-2">
+                {selectedJob.url && (
+                  <a href={selectedJob.url} target="_blank" rel="noopener noreferrer" className="btn-secondary text-[12px] py-1.5 px-3">
+                    <ExternalLink className="w-3 h-3" /> View
+                  </a>
+                )}
+                <button onClick={() => handleSave(selectedJob.id)} disabled={savedIds.has(selectedJob.id)}
+                  className={`p-2 rounded-lg transition-colors ${savedIds.has(selectedJob.id) ? 'text-brand-400 bg-brand-500/10' : 'text-ink-tertiary hover:text-brand-400 hover:bg-brand-500/10'}`}>
+                  {savedIds.has(selectedJob.id) ? <BookmarkCheck className="w-4 h-4" /> : <Bookmark className="w-4 h-4" />}
                 </button>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+
+            {/* Match score */}
+            {selectedJob.match_score > 0 && (
+              <div className="mb-6 px-4 py-3 rounded-lg" style={{ background: 'rgba(94,106,210,0.06)', border: '1px solid rgba(94,106,210,0.12)' }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] text-brand-400 font-medium">Match Score</span>
+                  <span className="text-[14px] font-medium text-brand-400">{Math.round(selectedJob.match_score)}%</span>
+                </div>
+              </div>
+            )}
+
+            {/* Description */}
+            {selectedJob.description && (
+              <div>
+                <p className="text-[11px] text-ink-tertiary uppercase tracking-widest mb-2">Description</p>
+                <p className="text-[13px] text-ink-secondary leading-relaxed whitespace-pre-wrap">{selectedJob.description}</p>
+              </div>
+            )}
+
+            {/* Requirements */}
+            {selectedJob.requirements && (
+              <div className="mt-6">
+                <p className="text-[11px] text-ink-tertiary uppercase tracking-widest mb-2">Requirements</p>
+                <p className="text-[13px] text-ink-secondary leading-relaxed whitespace-pre-wrap">{selectedJob.requirements}</p>
+              </div>
+            )}
+
+            {/* Source */}
+            <div className="mt-6 pt-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+              <p className="text-[11px] text-ink-tertiary">Source: {selectedJob.source || 'unknown'} · Added {selectedJob.created_at ? new Date(selectedJob.created_at).toLocaleDateString() : ''}</p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-ink-tertiary text-[13px]">
+            Select a job to view details
+          </div>
+        )}
+      </div>
     </div>
   )
 }
