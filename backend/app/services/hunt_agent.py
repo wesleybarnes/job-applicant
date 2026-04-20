@@ -263,12 +263,62 @@ Pre-written answers: {custom}""".strip()
                 j.setdefault('reason', 'Could not evaluate')
         return jobs
 
-    # ── LinkedIn login (human-like, stealth) ────────────────────────────
+    # ── Cookie persistence ──────────────────────────────────────────────
+
+    def _cookie_path(self, user: dict) -> str:
+        """Get the cookie file path for this user."""
+        cookie_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'uploads', '.cookies')
+        os.makedirs(cookie_dir, exist_ok=True)
+        return os.path.join(cookie_dir, f"li_{user.get('id', 'anon')}.json")
+
+    async def _save_cookies(self, context, user: dict):
+        """Save browser cookies to disk after successful login."""
+        try:
+            cookies = await context.cookies()
+            with open(self._cookie_path(user), 'w') as f:
+                json.dump(cookies, f)
+        except Exception:
+            pass
+
+    async def _load_cookies(self, context, user: dict) -> bool:
+        """Load saved cookies. Returns True if cookies were loaded."""
+        path = self._cookie_path(user)
+        if not os.path.exists(path):
+            return False
+        try:
+            with open(path, 'r') as f:
+                cookies = json.load(f)
+            if cookies:
+                await context.add_cookies(cookies)
+                return True
+        except Exception:
+            pass
+        return False
+
+    # ── LinkedIn login (cookie-first, then human-like) ────────────────
+
     async def _linkedin_login(self, page, user: dict, session: HuntSession) -> bool:
         import random
 
         email    = user.get('linkedin_email')
         password = user.get('linkedin_password')
+
+        # Strategy 1: Try saved cookies first (no login needed, no CAPTCHA)
+        has_cookies = await self._load_cookies(page.context, user)
+        if has_cookies:
+            session.emit({"type": "action", "message": "Loading saved LinkedIn session..."})
+            try:
+                await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=12000)
+                await asyncio.sleep(1.5)
+                current = page.url
+                if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
+                    session.emit({"type": "action", "message": "✓ Restored LinkedIn session from cookies"})
+                    return True
+                else:
+                    session.emit({"type": "action", "message": "Saved session expired — logging in fresh"})
+            except Exception:
+                session.emit({"type": "action", "message": "Cookie load failed — logging in fresh"})
+
         if not email or not password:
             session.emit({"type": "status", "message": "No LinkedIn credentials — searching as guest"})
             return False
@@ -365,17 +415,56 @@ Pre-written answers: {custom}""".strip()
             current = page.url
             if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
                 session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
+                await self._save_cookies(page.context, user)
                 return True
             elif any(x in current for x in ["checkpoint", "challenge", "verification", "two-step"]):
-                session.emit({"type": "thinking", "message": "LinkedIn requires verification (CAPTCHA/2FA). Continuing as guest. Try: pause the hunt, complete verification manually, then resume."})
-                return False
+                # CAPTCHA/security check — auto-pause so user can solve it manually
+                session.emit({"type": "thinking", "message": "LinkedIn needs a security verification (CAPTCHA or 2FA). Pausing so you can solve it — click in the browser to complete the check, then hit Resume."})
+                session.pause()
+                # Wait for user to resume (they solve CAPTCHA manually via the pause/interact feature)
+                await session.check_paused()
+                if session._stopped:
+                    return False
+                # Check if we're now logged in after user solved it
+                await asyncio.sleep(1)
+                current = page.url
+                if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
+                    session.emit({"type": "action", "message": "✓ LinkedIn login successful — verification passed"})
+                    await self._save_cookies(page.context, user)
+                    return True
+                else:
+                    session.emit({"type": "action", "message": "⚠ Still not logged in after verification — continuing as guest"})
+                    return False
             else:
                 # Could be a slow redirect — wait a bit more
                 await asyncio.sleep(2)
                 current = page.url
                 if any(x in current for x in ["feed", "/in/", "mynetwork"]):
                     session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
+                    await self._save_cookies(page.context, user)
                     return True
+                # Check for CAPTCHA on the current page (sometimes it's inline, not a redirect)
+                captcha_present = False
+                for sel in ['iframe[src*="captcha"]', '[id*="captcha"]', '.challenge', '#captcha-internal']:
+                    try:
+                        if await page.locator(sel).count() > 0:
+                            captcha_present = True
+                            break
+                    except Exception:
+                        pass
+                if captcha_present:
+                    session.emit({"type": "thinking", "message": "CAPTCHA detected on page. Pausing — solve it in the browser, then click Resume."})
+                    session.pause()
+                    await session.check_paused()
+                    if session._stopped:
+                        return False
+                    await asyncio.sleep(1)
+                    current = page.url
+                    if any(x in current for x in ["feed", "/in/", "mynetwork"]):
+                        session.emit({"type": "action", "message": "✓ Logged in after CAPTCHA"})
+                        await self._save_cookies(page.context, user)
+                        return True
+                    return False
                 session.emit({"type": "action", "message": f"⚠ Login result unclear (at: {current[:60]}) — continuing as guest"})
                 return False
         except Exception as e:
