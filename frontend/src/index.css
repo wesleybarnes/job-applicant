@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,108 +7,87 @@
 @layer base {
   * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-    background: #050505;
-    color: #F5F5F5;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #111111;
+    color: #EDEDED;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
+  h1, h2, h3 { letter-spacing: -0.03em; font-weight: 500; }
 }
 
 @layer components {
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2
-           font-medium text-sm text-black
-           px-4 py-2 rounded-full
-           transition-all duration-200 cursor-pointer select-none;
-    background: #F59E0B;
+           font-medium text-sm text-white
+           px-4 py-2 rounded-lg
+           transition-all duration-150 cursor-pointer;
+    background: #5E6AD2;
   }
-  .btn-primary:hover { background: #FBBF24; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(245,158,11,0.25); }
+  .btn-primary:hover { background: #6E7AE2; }
   .btn-primary:active { transform: scale(0.97); }
-  .btn-primary:disabled { @apply opacity-40 cursor-not-allowed; transform: none; box-shadow: none; }
+  .btn-primary:disabled { @apply opacity-40 cursor-not-allowed; }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center gap-2
            font-medium text-sm text-ink-secondary
-           px-4 py-2 rounded-full
-           transition-all duration-200 cursor-pointer select-none;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.08);
+           px-4 py-2 rounded-lg
+           transition-all duration-150 cursor-pointer;
+    background: transparent;
+    border: 1px solid rgba(255,255,255,0.1);
   }
-  .btn-secondary:hover { background: rgba(255,255,255,0.08); color: #F5F5F5; border-color: rgba(255,255,255,0.12); }
+  .btn-secondary:hover { background: rgba(255,255,255,0.04); color: #EDEDED; border-color: rgba(255,255,255,0.15); }
 
   .btn-ghost {
     @apply inline-flex items-center justify-center gap-2
            font-medium text-sm text-ink-tertiary
-           px-3 py-2 rounded-full
-           hover:text-ink-primary hover:bg-white/5
-           transition-all duration-200 cursor-pointer;
+           px-3 py-2 rounded-lg
+           hover:text-ink-secondary hover:bg-white/[0.03]
+           transition-all duration-150 cursor-pointer;
   }
 
   .btn-danger {
     @apply inline-flex items-center justify-center gap-2
            font-medium text-sm text-white
-           px-4 py-2 rounded-full transition-all duration-200;
-    background: #DC2626;
+           px-4 py-2 rounded-lg transition-all duration-150;
+    background: #D93036;
   }
-  .btn-danger:hover { background: #EF4444; }
+  .btn-danger:hover { background: #E5484D; }
 
   .btn-gold {
     @apply inline-flex items-center justify-center gap-2
-           font-medium text-sm text-black
-           px-4 py-2 rounded-full transition-all duration-200;
-    background: #F59E0B;
+           font-medium text-sm text-white
+           px-4 py-2 rounded-lg transition-all duration-150;
+    background: #5E6AD2;
   }
-  .btn-gold:hover { background: #FBBF24; }
+  .btn-gold:hover { background: #6E7AE2; }
 
   .card {
-    background: rgba(10,10,10,0.8);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: #191919;
     border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 16px;
+    border-radius: 12px;
   }
 
   .input {
-    @apply w-full rounded-xl px-3.5 py-2.5 text-sm
+    @apply w-full rounded-lg px-3 py-2.5 text-sm
            text-ink-primary placeholder-ink-tertiary
-           outline-none transition-all duration-200;
-    background: rgba(255,255,255,0.04);
+           outline-none transition-all duration-150;
+    background: rgba(255,255,255,0.03);
     border: 1px solid rgba(255,255,255,0.08);
   }
-  .input:focus { border-color: rgba(245,158,11,0.5); box-shadow: 0 0 0 2px rgba(245,158,11,0.08); }
+  .input:focus { border-color: #5E6AD2; box-shadow: 0 0 0 2px rgba(94,106,210,0.15); }
 
   .label { @apply block text-xs font-medium text-ink-secondary mb-1.5; }
-
-  .badge { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium; }
-
-  /* Floating panels — the signature look */
-  .panel {
-    background: rgba(10,10,10,0.7);
-    backdrop-filter: blur(40px) saturate(150%);
-    -webkit-backdrop-filter: blur(40px) saturate(150%);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 20px;
-    box-shadow: 0 8px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04);
-  }
-
-  /* Ambient orb */
-  .orb {
-    position: fixed;
-    border-radius: 50%;
-    filter: blur(80px);
-    pointer-events: none;
-    z-index: 0;
-  }
+  .badge { @apply inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium; }
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
 
-/* Shimmer */
 .text-shimmer {
-  background: linear-gradient(90deg, #F59E0B, #FCD34D, #F59E0B);
+  background: linear-gradient(90deg, #5E6AD2, #9EA2F8, #5E6AD2);
   background-size: 200% auto;
   animation: shimmer 3s linear infinite;
   -webkit-background-clip: text;
