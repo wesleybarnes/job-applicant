@@ -14,6 +14,18 @@ class Settings(BaseSettings):
     # Anthropic
     anthropic_api_key: str = ""
 
+    # Model selection per task. Sonnet 4.6 is ~5x cheaper and noticeably faster
+    # than Opus for cover letters and form filling, with no quality loss on these
+    # tasks. Override via env to A/B against Opus (claude-opus-4-7) if desired.
+    agent_model: str = "claude-sonnet-4-6"            # cover letters + match analysis
+    form_fill_model: str = "claude-sonnet-4-6"        # browser + hunt form filling
+    scoring_model: str = "claude-haiku-4-5-20251001"  # hunt batch job scoring (cheapest)
+
+    # Hunt pacing: multiplier on human-like browser delays. 1.0 = original cadence,
+    # lower = faster (and less "watchable"/stealthy). Tune up toward 1.0 if a board
+    # starts throwing CAPTCHAs. Inference latency is cut separately by form_fill_model.
+    hunt_speed_factor: float = 0.4
+
     # Clerk auth
     clerk_secret_key: str = ""
     clerk_publishable_key: str = ""
@@ -32,6 +44,14 @@ class Settings(BaseSettings):
 
     # Job search
     jsearch_api_key: str = ""
+
+    # Embeddings / RAG (career knowledge base)
+    # If voyage_api_key is empty, RAG transparently disables and the agent
+    # falls back to the truncated resume text (no behavior change).
+    embedding_provider: str = "voyage"   # voyage | none
+    voyage_api_key: str = ""
+    embedding_model: str = "voyage-3.5"
+    rag_top_k: int = 6                    # chunks retrieved per application
 
     class Config:
         env_file = str(BASE_DIR / ".env")

@@ -27,6 +27,10 @@ Always be honest — never fabricate experience or qualifications. Focus on genu
 Write in a professional but authentic voice that matches the candidate's background.
 """
 
+# System prompt as a cacheable block — the instructions never change between
+# applications, so caching them trims input cost and time-to-first-token.
+CACHED_SYSTEM = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+
 
 class JobApplicationAgent:
     def __init__(self):
@@ -135,11 +139,15 @@ class JobApplicationAgent:
             },
         ]
 
-    def _build_prompt(self, user, job, resume, mode: str) -> str:
-        resume_text = ""
-        if resume and resume.parsed_text:
-            resume_text = f"\n\n## Resume Content\n{resume.parsed_text[:4000]}"
+    def _build_prompt(self, user, job, resume, mode: str, career_context: str = "") -> tuple:
+        """Return (candidate_block, job_block).
 
+        The candidate block is stable for a given user/mode and is marked for
+        prompt caching by the caller, so applying to many jobs only pays for it
+        once. The job block carries the per-job posting plus the career chunks
+        retrieved from the knowledge base for THIS role.
+        """
+        # --- Stable candidate block (cached across applies) ---
         structured = resume.structured_data if resume and resume.structured_data else {}
         skills_text = ""
         if structured.get("skills"):
@@ -151,29 +159,15 @@ class JobApplicationAgent:
             custom_answers = f"\n\n## Candidate's Pre-written Answers\n{qa_items}"
 
         salary_info = ""
-        if user.salary_min or user.salary_max:
-            salary_info = f"\nSalary expectation: ${user.salary_min:,} - ${user.salary_max:,}" if user.salary_min and user.salary_max else ""
+        if user.salary_min and user.salary_max:
+            salary_info = f"\nSalary expectation: ${user.salary_min:,} - ${user.salary_max:,}"
 
-        job_salary = ""
-        if job.salary_min or job.salary_max:
-            job_salary = f"\nSalary range: ${job.salary_min or 0:,} - ${job.salary_max or 0:,}"
+        # When RAG retrieval is unavailable, fall back to the truncated resume dump.
+        resume_text = ""
+        if not career_context and resume and resume.parsed_text:
+            resume_text = f"\n\n## Resume Content\n{resume.parsed_text[:4000]}"
 
-        return f"""Please analyze this job application opportunity and prepare all necessary materials.
-
-## Job Details
-**Title:** {job.title}
-**Company:** {job.company}
-**Location:** {job.location or 'Not specified'} ({job.remote_type or 'Not specified'})
-**Type:** {job.job_type or 'Full-time'}
-{job_salary}
-
-**Job Description:**
-{(job.description or 'Not provided')[:2500]}
-
-**Requirements:**
-{(job.requirements or 'See description')[:1000]}
-
-## Candidate Profile
+        candidate_block = f"""## Candidate Profile
 **Name:** {user.full_name}
 **Email:** {user.email}
 **Location:** {user.location or 'Not specified'}
@@ -192,7 +186,37 @@ class JobApplicationAgent:
 **LinkedIn:** {user.linkedin_url or 'N/A'}
 **GitHub:** {user.github_url or 'N/A'}
 {resume_text}
-{custom_answers}
+{custom_answers}"""
+
+        # --- Dynamic job block (per posting) ---
+        job_salary = ""
+        if job.salary_min or job.salary_max:
+            job_salary = f"\nSalary range: ${job.salary_min or 0:,} - ${job.salary_max or 0:,}"
+
+        relevant_background = ""
+        if career_context:
+            relevant_background = f"""
+
+## Most Relevant Background for THIS Role
+The following pieces of the candidate's history were retrieved as the best matches for this posting. Ground the analysis and cover letter in these specifics:
+
+{career_context}"""
+
+        job_block = f"""Please analyze this job application opportunity and prepare all necessary materials.
+
+## Job Details
+**Title:** {job.title}
+**Company:** {job.company}
+**Location:** {job.location or 'Not specified'} ({job.remote_type or 'Not specified'})
+**Type:** {job.job_type or 'Full-time'}
+{job_salary}
+
+**Job Description:**
+{(job.description or 'Not provided')[:2500]}
+
+**Requirements:**
+{(job.requirements or 'See description')[:1000]}
+{relevant_background}
 
 ## Instructions
 Mode: {mode}
@@ -210,20 +234,33 @@ The cover letter should:
 - Be 3-4 paragraphs, professional but warm
 - NOT start with "I am writing to apply for..."
 """
+        return candidate_block, job_block
 
-    async def run(self, user, job, resume, mode: str = "full") -> dict:
+    def _build_messages(self, user, job, resume, mode: str, career_context: str = "") -> list:
+        """Assemble the user message with a cache breakpoint after the stable
+        candidate block, so repeat applies by the same user reuse it."""
+        candidate_block, job_block = self._build_prompt(user, job, resume, mode, career_context)
+        return [{
+            "role": "user",
+            "content": [
+                {"type": "text", "text": candidate_block, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": job_block},
+            ],
+        }]
+
+    async def run(self, user, job, resume, mode: str = "full", career_context: str = "") -> dict:
         """Run the agent and return the complete result."""
-        messages = [{"role": "user", "content": self._build_prompt(user, job, resume, mode)}]
+        messages = self._build_messages(user, job, resume, mode, career_context)
         tools = self._build_tools()
         agent_log = []
         results = {}
 
         while True:
             response = await self.client.messages.create(
-                model="claude-opus-4-6",
+                model=settings.agent_model,
                 max_tokens=8000,
                 thinking={"type": "adaptive"},
-                system=SYSTEM_PROMPT,
+                system=CACHED_SYSTEM,
                 tools=tools,
                 messages=messages,
             )
@@ -286,9 +323,9 @@ The cover letter should:
             "next_steps": completion_data.get("next_steps", []),
         }
 
-    async def run_stream(self, user, job, resume, mode: str = "full") -> AsyncIterator[dict]:
+    async def run_stream(self, user, job, resume, mode: str = "full", career_context: str = "") -> AsyncIterator[dict]:
         """Run the agent with streaming events for real-time UI updates."""
-        messages = [{"role": "user", "content": self._build_prompt(user, job, resume, mode)}]
+        messages = self._build_messages(user, job, resume, mode, career_context)
         tools = self._build_tools()
 
         yield {"type": "start", "message": "Agent starting analysis..."}
@@ -296,10 +333,10 @@ The cover letter should:
 
         while True:
             async with self.client.messages.stream(
-                model="claude-opus-4-6",
+                model=settings.agent_model,
                 max_tokens=8000,
                 thinking={"type": "adaptive"},
-                system=SYSTEM_PROMPT,
+                system=CACHED_SYSTEM,
                 tools=tools,
                 messages=messages,
             ) as stream:

@@ -8,8 +8,19 @@ from app import models, schemas
 from app.agents.job_application_agent import JobApplicationAgent
 from app.auth import get_current_user, require_credits, deduct_credits
 from app.config import CREDITS_AI_APPLY
+from app.services import career_kb
 
 router = APIRouter(prefix="/applications", tags=["applications"])
+
+
+def _job_query(job) -> str:
+    """Build the retrieval query from a job posting (capped for the embedder)."""
+    parts = [f"{job.title} at {job.company}"]
+    if job.description:
+        parts.append(job.description[:2000])
+    if job.requirements:
+        parts.append(job.requirements[:1000])
+    return "\n".join(parts)
 
 
 @router.post("/", response_model=schemas.ApplicationResponse)
@@ -48,7 +59,7 @@ def get_application(application_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/{application_id}", response_model=schemas.ApplicationResponse)
-def update_application(
+async def update_application(
     application_id: int,
     update: schemas.ApplicationUpdate,
     db: Session = Depends(get_db),
@@ -60,6 +71,15 @@ def update_application(
         setattr(app, field, value)
     db.commit()
     db.refresh(app)
+
+    # Once an application is actually sent, fold its (approved) cover letter back
+    # into the knowledge base so its phrasing informs future letters.
+    if app.cover_letter and app.status in {"submitted", "applied", "interviewing", "offer"}:
+        try:
+            await career_kb.index_cover_letter(db, app.user_id, app)
+        except Exception:
+            pass
+
     return app
 
 
@@ -90,12 +110,19 @@ async def run_agent(
     # Deduct credit after confirming everything is in order
     deduct_credits(current_user, CREDITS_AI_APPLY, db)
 
+    # Retrieve the most relevant career chunks for this job (empty if RAG disabled)
+    try:
+        career_context = await career_kb.retrieve_context(db, user.id, _job_query(job))
+    except Exception:
+        career_context = ""
+
     agent = JobApplicationAgent()
     result = await agent.run(
         user=user,
         job=job,
         resume=resume,
         mode=request.mode,
+        career_context=career_context,
     )
 
     app.cover_letter = result.get("cover_letter")
@@ -131,9 +158,16 @@ async def run_agent_stream(application_id: int, db: Session = Depends(get_db)):
         models.Resume.is_active == True,
     ).first()
 
+    try:
+        career_context = await career_kb.retrieve_context(db, user.id, _job_query(job))
+    except Exception:
+        career_context = ""
+
     async def event_stream():
         agent = JobApplicationAgent()
-        async for event in agent.run_stream(user=user, job=job, resume=resume):
+        async for event in agent.run_stream(
+            user=user, job=job, resume=resume, career_context=career_context
+        ):
             yield f"data: {json.dumps(event)}\n\n"
         yield "data: [DONE]\n\n"
 

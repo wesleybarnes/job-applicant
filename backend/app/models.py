@@ -109,6 +109,26 @@ class Application(Base):
     job = relationship("Job", back_populates="applications")
 
 
+class CareerChunk(Base):
+    """A semantically searchable piece of the user's career knowledge base.
+
+    Sources: resume sections, experience bullets, the professional summary,
+    pre-written application answers, and approved cover letters. Each chunk
+    stores its embedding (list[float]) so we can retrieve the most relevant
+    pieces for a specific job instead of stuffing/truncating the whole resume.
+    """
+    __tablename__ = "career_chunks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user_profiles.id"), nullable=False, index=True)
+    source_type = Column(String(50))   # resume / experience / skills / summary / answer / cover_letter
+    source_id = Column(Integer, nullable=True)  # e.g. originating resume.id or application.id
+    content = Column(Text, nullable=False)
+    embedding = Column(JSON)           # list[float]
+    meta = Column(JSON)                # arbitrary metadata (label, question, etc.)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class HuntSession(Base):
     __tablename__ = "hunt_sessions"
 
