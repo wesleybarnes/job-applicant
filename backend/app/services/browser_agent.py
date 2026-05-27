@@ -486,7 +486,7 @@ If the URL has no application form (e.g. it redirects to LinkedIn Easy Apply, Gr
 
             while not session._cancelled:
                 response = await self.client.messages.create(
-                    model="claude-opus-4-6",
+                    model=settings.form_fill_model,
                     max_tokens=4096,
                     thinking={"type": "adaptive"},
                     system=BROWSER_SYSTEM_PROMPT,

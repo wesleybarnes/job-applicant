@@ -2,14 +2,15 @@
 Visual Hunt Agent — Smooth, human-like browsing with AI-powered form filling.
 
 Architecture:
-  - Playwright with slow_mo for visible, human-like browser interaction
+  - Playwright for visible, human-like browser interaction
   - 5fps screenshot streaming for smooth real-time viewing
-  - Claude Haiku 4.5 for batch job scoring (cost-effective)
-  - Claude Opus 4.6 with tools for intelligent form filling (reliable)
-  - Human-like typing, cursor movement, and scrolling
+  - settings.scoring_model (Haiku 4.5) for batch job scoring (cost-effective)
+  - settings.form_fill_model (Sonnet 4.6) with tools for fast, reliable form filling
+  - Human-like typing/cursor/scrolling, all paced via _pause() and scaled by
+    settings.hunt_speed_factor so the whole hunt can be sped up or slowed down
   - Target: 5+ applications in 5 minutes
 
-Cost per hunt session: ~$0.50-1.50 (Haiku scoring + Opus form fill)
+Cost per hunt session: ~$0.10-0.40 (Haiku scoring + Sonnet form fill)
 """
 import asyncio
 import base64
@@ -193,6 +194,17 @@ class HybridHuntAgent:
 
     def __init__(self):
         self.client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        # Multiplier on human-like delays; <1.0 speeds the hunt up. See config.
+        self.speed = settings.hunt_speed_factor
+
+    async def _pause(self, seconds: float):
+        """Human-like delay, scaled by the configured hunt speed factor.
+
+        All visible browser pacing routes through here so the whole hunt can be
+        sped up (or slowed for stealth) from one setting. The screenshot stream
+        cadence is intentionally NOT scaled through this.
+        """
+        await asyncio.sleep(seconds * self.speed)
 
     # ── User profile text (cached across Haiku calls) ────────────────────
     def _profile_text(self, user: dict) -> str:
@@ -232,7 +244,7 @@ Pre-written answers: {custom}""".strip()
         )
         try:
             resp = await self.client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=settings.scoring_model,
                 max_tokens=800,
                 system=[{
                     "type": "text",
@@ -309,7 +321,7 @@ Pre-written answers: {custom}""".strip()
             session.emit({"type": "action", "message": "Loading saved LinkedIn session..."})
             try:
                 await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=12000)
-                await asyncio.sleep(1.5)
+                await self._pause(1.5)
                 current = page.url
                 if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
                     session.emit({"type": "action", "message": "✓ Restored LinkedIn session from cookies"})
@@ -326,7 +338,7 @@ Pre-written answers: {custom}""".strip()
         session.emit({"type": "action", "message": "Logging in to LinkedIn..."})
         try:
             await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=20000)
-            await asyncio.sleep(random.uniform(1.0, 1.8))
+            await self._pause(random.uniform(1.0, 1.8))
 
             # Wait for email input to be visible and interactable
             email_sel = 'input[name="session_key"], input[id="username"]'
@@ -346,21 +358,21 @@ Pre-written answers: {custom}""".strip()
                     box['y'] + random.uniform(5, box['height'] - 5),
                     steps=random.randint(8, 15)
                 )
-                await asyncio.sleep(random.uniform(0.1, 0.3))
+                await self._pause(random.uniform(0.1, 0.3))
 
             await email_input.click()
-            await asyncio.sleep(random.uniform(0.2, 0.4))
+            await self._pause(random.uniform(0.2, 0.4))
 
             # Type email character by character with human-like variable delay
             for char in email:
                 await page.keyboard.type(char, delay=random.randint(30, 80))
                 if random.random() < 0.05:  # occasional longer pause
-                    await asyncio.sleep(random.uniform(0.1, 0.2))
-            await asyncio.sleep(random.uniform(0.3, 0.6))
+                    await self._pause(random.uniform(0.1, 0.2))
+            await self._pause(random.uniform(0.3, 0.6))
 
             # Tab to password field (more human than clicking)
             await page.keyboard.press("Tab")
-            await asyncio.sleep(random.uniform(0.3, 0.5))
+            await self._pause(random.uniform(0.3, 0.5))
 
             # Verify password field is focused — if not, click it
             pass_sel = 'input[name="session_password"], input[id="password"]'
@@ -383,12 +395,12 @@ Pre-written answers: {custom}""".strip()
                         steps=random.randint(8, 12)
                     )
                 await pass_input.click()
-                await asyncio.sleep(random.uniform(0.2, 0.4))
+                await self._pause(random.uniform(0.2, 0.4))
 
             # Type password character by character
             for char in password:
                 await page.keyboard.type(char, delay=random.randint(25, 70))
-            await asyncio.sleep(random.uniform(0.4, 0.8))
+            await self._pause(random.uniform(0.4, 0.8))
 
             # Click sign in button (more human than pressing Enter)
             submit_btn = page.locator('button[type="submit"], button[data-litms-control-urn*="login-submit"]').first
@@ -400,7 +412,7 @@ Pre-written answers: {custom}""".strip()
                         box['y'] + random.uniform(5, box['height'] - 5),
                         steps=random.randint(6, 12)
                     )
-                    await asyncio.sleep(random.uniform(0.1, 0.3))
+                    await self._pause(random.uniform(0.1, 0.3))
                 await submit_btn.click()
             else:
                 await page.keyboard.press("Enter")
@@ -409,7 +421,7 @@ Pre-written answers: {custom}""".strip()
             try:
                 await page.wait_for_load_state("networkidle", timeout=8000)
             except Exception:
-                await asyncio.sleep(3)
+                await self._pause(3)
 
             # Check result
             current = page.url
@@ -426,7 +438,7 @@ Pre-written answers: {custom}""".strip()
                 if session._stopped:
                     return False
                 # Check if we're now logged in after user solved it
-                await asyncio.sleep(1)
+                await self._pause(1)
                 current = page.url
                 if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
                     session.emit({"type": "action", "message": "✓ LinkedIn login successful — verification passed"})
@@ -437,7 +449,7 @@ Pre-written answers: {custom}""".strip()
                     return False
             else:
                 # Could be a slow redirect — wait a bit more
-                await asyncio.sleep(2)
+                await self._pause(2)
                 current = page.url
                 if any(x in current for x in ["feed", "/in/", "mynetwork"]):
                     session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
@@ -458,7 +470,7 @@ Pre-written answers: {custom}""".strip()
                     await session.check_paused()
                     if session._stopped:
                         return False
-                    await asyncio.sleep(1)
+                    await self._pause(1)
                     current = page.url
                     if any(x in current for x in ["feed", "/in/", "mynetwork"]):
                         session.emit({"type": "action", "message": "✓ Logged in after CAPTCHA"})
@@ -632,7 +644,7 @@ Pre-written answers: {custom}""".strip()
         except Exception:
             pass
         await element.click()
-        await asyncio.sleep(0.25)
+        await self._pause(0.25)
 
     async def _human_type(self, page, element, text: str, session: HuntSession):
         """Type with human-like character-by-character delay."""
@@ -645,20 +657,20 @@ Pre-written answers: {custom}""".strip()
         except Exception:
             pass
         await element.click()
-        await asyncio.sleep(0.15)
+        await self._pause(0.15)
         # Clear existing value first
         await element.fill('')
-        # Type with visible delay — faster for long text
-        delay = 20 if len(text) < 30 else 8
+        # Type with visible delay — faster for long text, scaled by hunt speed
+        delay = int((20 if len(text) < 30 else 8) * self.speed)
         await element.type(text, delay=delay)
-        await asyncio.sleep(0.2)
+        await self._pause(0.2)
 
     async def _smooth_scroll(self, page, amount: int, steps: int = 4):
         """Scroll gradually for visible effect."""
         step_amount = amount // steps
         for _ in range(steps):
             await page.evaluate(f"window.scrollBy(0, {step_amount})")
-            await asyncio.sleep(0.15)
+            await self._pause(0.15)
 
     # ── Opus-powered form filling ────────────────────────────────────────
 
@@ -683,7 +695,7 @@ Pre-written answers: {custom}""".strip()
                 session.emit({"type": "thinking", "message": f"Got your instruction: \"{instruction}\". Continuing with that in mind."})
 
             # Get current form state
-            await asyncio.sleep(0.3)
+            await self._pause(0.3)
             try:
                 page_text = await page.inner_text("body")
                 page_text = page_text[:3000]
@@ -707,7 +719,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
 
             try:
                 resp = await self.client.messages.create(
-                    model="claude-opus-4-6",
+                    model=settings.form_fill_model,
                     max_tokens=2048,
                     system=FORM_FILL_SYSTEM,
                     tools=FORM_FILL_TOOLS,
@@ -782,7 +794,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             if await el.count() > 0:
                                 await el.select_option(label=opt)
                                 all_fields_filled.append(hint)
-                                await asyncio.sleep(0.3)
+                                await self._pause(0.3)
                                 break
                         except Exception:
                             continue
@@ -814,7 +826,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             for fi in file_inputs:
                                 await fi.set_input_files(resume_path)
                                 all_fields_filled.append("Resume")
-                                await asyncio.sleep(1)
+                                await self._pause(1)
                                 break
                         except Exception:
                             all_concerns.append("Resume upload failed")
@@ -845,7 +857,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         btn = page.locator(sel).first
                         if await btn.count() > 0 and await btn.is_visible():
                             await self._click_element(page, session, btn)
-                            await asyncio.sleep(1.2)
+                            await self._pause(1.2)
                             clicked_next = True
                             break
                     except Exception:
@@ -872,7 +884,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
         can have up to 6 pages of questions before submit."""
         submitted = False
         for attempt in range(10):  # up to 10 form pages
-            await asyncio.sleep(0.6)
+            await self._pause(0.6)
 
             # Check for success indicators first
             try:
@@ -919,7 +931,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             pass
                         session.emit({"type": "action", "message": f"Clicking: {btn_text or 'next step'}"})
                         await self._click_element(page, session, btn)
-                        await asyncio.sleep(0.8)
+                        await self._pause(0.8)
                         clicked = True
                         if 'submit' in btn_text:
                             submitted = True
@@ -928,7 +940,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     continue
 
             if submitted:
-                await asyncio.sleep(1)
+                await self._pause(1)
                 return True
 
             if not clicked:
@@ -1162,7 +1174,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     session.emit({"type": "action", "message": f"Opening {board_display} — searching for '{query}' in '{location}'"})
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-                        await asyncio.sleep(1.2)
+                        await self._pause(1.2)
                     except Exception as e:
                         session.emit({"type": "action", "message": f"Navigation failed: {str(e)[:60]}"})
                         continue
@@ -1170,9 +1182,9 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     # Smooth scroll to load more jobs (visible to user)
                     session.emit({"type": "action", "message": f"Scrolling through {board_display} results..."})
                     await self._smooth_scroll(page, 2400, steps=6)
-                    await asyncio.sleep(0.5)
+                    await self._pause(0.5)
                     await page.evaluate("window.scrollTo({ top: 0, behavior: 'smooth' })")
-                    await asyncio.sleep(0.4)
+                    await self._pause(0.4)
 
                     # Extract jobs from the page
                     raw_jobs = await self._extract_jobs_from_page(page, board)
@@ -1270,7 +1282,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         session.emit({"type": "thinking", "message": f"Opening {job_title} at {company} (score: {score}%). {reason}"})
                         try:
                             await page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
-                            await asyncio.sleep(1.5)
+                            await self._pause(1.5)
                         except Exception as e:
                             session.emit({"type": "action", "message": f"Could not open job page — {str(e)[:50]}"})
                             continue
@@ -1287,9 +1299,9 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         # Scroll to read the listing (visible to user)
                         session.emit({"type": "action", "message": f"Reading job description..."})
                         await self._smooth_scroll(page, 400, steps=3)
-                        await asyncio.sleep(0.5)
+                        await self._pause(0.5)
                         await page.evaluate("window.scrollTo(0, 0)")
-                        await asyncio.sleep(0.5)
+                        await self._pause(0.5)
 
                         # Find and click Apply — try multiple strategies
                         apply_clicked = False
@@ -1310,7 +1322,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                                 if await el.count() > 0 and await el.is_visible():
                                     session.emit({"type": "action", "message": f"Clicking apply button..."})
                                     await self._click_element(page, session, el)
-                                    await asyncio.sleep(0.8)
+                                    await self._pause(0.8)
                                     apply_clicked = True
                                     break
                             except Exception:
@@ -1332,7 +1344,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                                         if ext_url:
                                             session.emit({"type": "action", "message": f"Found external application link — navigating..."})
                                             await page.goto(ext_url, wait_until="domcontentloaded", timeout=15000)
-                                            await asyncio.sleep(2)
+                                            await self._pause(2)
                                             apply_clicked = True
                                             break
                                 except Exception:
@@ -1390,7 +1402,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         else:
                             session.emit({"type": "action", "message": f"Could not complete submission for {job_title}"})
 
-                        await asyncio.sleep(1)
+                        await self._pause(1)
 
                 # ── Wrap up ──────────────────────────────────────────────
                 if not session._stopped:

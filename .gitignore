@@ -42,3 +42,6 @@ dist/
 # Logs
 *.log
 logs/
+
+# Private architecture docs (kept local, not published)
+docs/
