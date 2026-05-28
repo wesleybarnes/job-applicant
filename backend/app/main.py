@@ -20,6 +20,7 @@ def _run_migrations():
         "ALTER TABLE user_profiles ADD COLUMN goals TEXT",                # goals survey
         "ALTER TABLE user_profiles ADD COLUMN goal_summary TEXT",         # editable summary
         "ALTER TABLE jobs ADD COLUMN logo_url VARCHAR(1000)",             # company logos
+        "ALTER TABLE user_profiles ADD COLUMN goal_summary_updated_at TIMESTAMP WITH TIME ZONE",  # goal summary staleness vs resume
     ]
     for stmt in statements:
         try:

@@ -38,6 +38,7 @@ class UserProfile(Base):
     custom_answers = Column(JSON)        # common app questions & answers
     goals = Column(Text)                 # free-form goals from the pre-hunt survey
     goal_summary = Column(Text)          # AI-generated, user-editable goal summary
+    goal_summary_updated_at = Column(DateTime(timezone=True))  # when the summary was last (re)written — used to flag staleness vs new resumes
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

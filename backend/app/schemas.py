@@ -30,6 +30,7 @@ class UserProfileCreate(BaseModel):
     auto_apply: Optional[bool] = False
     goals: Optional[str] = None          # free-form goals from the pre-hunt survey
     goal_summary: Optional[str] = None   # AI-generated, user-editable summary
+    goal_summary_updated_at: Optional[datetime] = None   # for stale-vs-new-resume hints
 
 
 class UserProfileUpdate(UserProfileCreate):
