@@ -113,6 +113,29 @@ class Application(Base):
     job = relationship("Job", back_populates="applications")
 
 
+class UserJobDecision(Base):
+    """Cross-hunt memory: every job the agent (or user) made a decision about.
+
+    Lets the hunt remember "we already skipped this one" across sessions, and
+    lets the user resurface a previously-skipped job (delete the row + the
+    next hunt will reconsider it). 'applied' rows are kept as history; 'skipped'
+    rows are what gate future hunts.
+    """
+    __tablename__ = "user_job_decisions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user_profiles.id"), nullable=False, index=True)
+    job_url = Column(String(1000), nullable=False, index=True)
+    decision = Column(String(20), nullable=False)   # skipped | applied | submitted
+    title = Column(String(300))
+    company = Column(String(300))
+    location = Column(String(300))
+    match_score = Column(Float)
+    reason = Column(Text)
+    hunt_session_id = Column(Integer, ForeignKey("hunt_sessions.id"), nullable=True)
+    decided_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class AllowlistEmail(Base):
     """Closed-beta allowlist. Emails here can complete onboarding; anyone else
     is shown a "beta is invite-only" screen. Admins add via /admin/allowlist."""

@@ -33,11 +33,15 @@ class AnswerRequest(BaseModel):
 class CredentialsRequest(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
-    save: bool = False        # store the password encrypted for future hunts
+    cookie_li_at: Optional[str] = None   # alt path: paste the li_at cookie value to skip 2FA
+    save: bool = False        # store the password (or cookie) encrypted for future hunts
     skip: bool = False        # decline to log in to this site
 
 class ChatRequest(BaseModel):
     message: str
+
+class ResurfaceRequest(BaseModel):
+    job_url: str
 
 class InteractRequest(BaseModel):
     type: str                      # "click" | "type" | "key" | "scroll"
@@ -360,6 +364,45 @@ class SaveJobRequest(BaseModel):
     location: Optional[str] = None
     match_score: Optional[float] = None
     reason: Optional[str] = None
+
+
+@router.get("/decisions")
+def list_my_decisions(
+    decision: Optional[str] = None,    # filter: 'skipped' | 'applied' | 'submitted'
+    limit: int = 200,
+    current_user: models.UserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Cross-hunt decision history for the current user."""
+    q = db.query(models.UserJobDecision).filter(models.UserJobDecision.user_id == current_user.id)
+    if decision:
+        q = q.filter(models.UserJobDecision.decision == decision)
+    rows = q.order_by(models.UserJobDecision.decided_at.desc()).limit(limit).all()
+    return [{
+        "id": r.id, "job_url": r.job_url, "decision": r.decision,
+        "title": r.title, "company": r.company, "location": r.location,
+        "match_score": r.match_score, "reason": r.reason,
+        "hunt_session_id": r.hunt_session_id,
+        "decided_at": r.decided_at.isoformat() if r.decided_at else None,
+    } for r in rows]
+
+
+@router.post("/decisions/resurface")
+def resurface_decision(
+    body: ResurfaceRequest,
+    current_user: models.UserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Forget a previous skip on this URL — the next hunt will reconsider it.
+    Deletes any 'skipped' rows for this (user, url) but leaves 'applied'/
+    'submitted' rows intact (those are the user's history)."""
+    deleted = db.query(models.UserJobDecision).filter(
+        models.UserJobDecision.user_id == current_user.id,
+        models.UserJobDecision.job_url == body.job_url,
+        models.UserJobDecision.decision == "skipped",
+    ).delete(synchronize_session=False)
+    db.commit()
+    return {"resurfaced": True, "removed": deleted}
 
 
 @router.post("/sessions/{session_id}/save-job")

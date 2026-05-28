@@ -601,9 +601,10 @@ Pre-written answers: {custom}""".strip()
         if session._stopped or not payload or payload.get("skip"):
             return None
         return {
-            "username": payload.get("username", "").strip(),
-            "password": payload.get("password", ""),
-            "save":     bool(payload.get("save")),
+            "username":      payload.get("username", "").strip(),
+            "password":      payload.get("password", ""),
+            "cookie_li_at":  payload.get("cookie_li_at", "").strip(),
+            "save":          bool(payload.get("save")),
         }
 
     # ── Generic per-site login (any site_key in the curated registry) ─
@@ -748,6 +749,7 @@ Pre-written answers: {custom}""".strip()
                 session.emit({"type": "action", "message": "Cookie load failed — logging in fresh"})
 
         # Strategy 2: Ask via popup (or use saved encrypted password) if no upfront creds
+        cookie_li_at = ""
         if (not email or not password) and db_factory and user.get('id'):
             creds = await self._request_credentials(
                 session, "linkedin", "LinkedIn",
@@ -755,7 +757,34 @@ Pre-written answers: {custom}""".strip()
             )
             if creds:
                 email, password = creds["username"], creds["password"]
+                cookie_li_at = creds.get("cookie_li_at") or ""
                 save_password = creds.get("save", False)
+
+        # Strategy 2b: If the user pasted a LinkedIn li_at cookie, that's the fastest
+        # and most reliable path — no login form, no 2FA challenge. We try this BEFORE
+        # the username/password path so users coming in via cookie skip the rest.
+        if cookie_li_at:
+            try:
+                await page.context.add_cookies([{
+                    "name": "li_at",
+                    "value": cookie_li_at.strip().strip('"'),
+                    "domain": ".linkedin.com",
+                    "path": "/",
+                    "secure": True,
+                    "httpOnly": True,
+                    "sameSite": "None",
+                }])
+                await page.goto("https://www.linkedin.com/feed/", wait_until="domcontentloaded", timeout=12000)
+                await self._pause(1.0)
+                if any(x in page.url for x in ["feed", "/in/", "mynetwork", "messaging"]):
+                    session.emit({"type": "action", "message": "✓ Signed in to LinkedIn via cookie — no 2FA needed"})
+                    if db_factory and user.get('id'):
+                        await self._save_site_cookies(page.context, db_factory, user['id'], 'linkedin')
+                    return True
+                else:
+                    session.emit({"type": "action", "message": "⚠ Cookie didn't work — trying password login"})
+            except Exception as e:
+                session.emit({"type": "action", "message": f"Cookie attempt failed: {str(e)[:60]} — trying password"})
 
         if not email or not password:
             session.emit({"type": "status", "message": "Skipped LinkedIn login — searching as guest"})
@@ -1112,11 +1141,66 @@ Pre-written answers: {custom}""".strip()
 
     # ── Human-like helpers ───────────────────────────────────────────────
 
+    async def _visualize_linkedin_search(self, page, query: str, location: str, session: 'HuntSession'):
+        """The URL params already filtered the results — this just types the
+        query into the visible search boxes so the user sees the agent search,
+        instead of the boxes appearing pre-filled out of nowhere.
+        """
+        try:
+            # LinkedIn renders different inputs logged-in vs guest, with several variants.
+            kw = page.locator(
+                'input[aria-label*="Search by title" i], '
+                'input[id^="jobs-search-box-keyword"], '
+                'input[id^="job-search-bar-keywords"]'
+            ).first
+            if await kw.count() > 0 and await kw.is_visible():
+                await self._human_type(page, kw, query, session)
+                await self._pause(0.25)
+            loc = page.locator(
+                'input[aria-label*="city" i], input[aria-label*="location" i], '
+                'input[id^="jobs-search-box-location"], '
+                'input[id^="job-search-bar-location"]'
+            ).first
+            if location and await loc.count() > 0 and await loc.is_visible():
+                await self._human_type(page, loc, location, session)
+                await self._pause(0.15)
+        except Exception:
+            pass  # purely cosmetic; never block the hunt on it
+
     async def _move_cursor_to(self, page, session: HuntSession, x: int, y: int):
-        """Move cursor visually to coordinates."""
-        session.cursor_x = x
-        session.cursor_y = y
-        await page.mouse.move(x, y, steps=8)
+        """Visually move the cursor along a quadratic bezier with ease-in-out and
+        variable step count — feels less robotic than a straight line at constant
+        speed. Step count scales with distance; control point is offset
+        perpendicular to the motion so the path curves like a real hand's would.
+        """
+        import math
+        import random
+        sx = session.cursor_x if session.cursor_x is not None else x
+        sy = session.cursor_y if session.cursor_y is not None else y
+        dx, dy = x - sx, y - sy
+        dist = math.hypot(dx, dy)
+        if dist < 4:
+            await page.mouse.move(x, y)
+            session.cursor_x, session.cursor_y = x, y
+            return
+
+        # ~22 px per step, capped — short hops are crisp, long sweeps are smooth
+        steps = max(8, min(48, int(dist / 22)))
+        # Perpendicular control point gives the path a gentle arc
+        nx, ny = -dy / dist, dx / dist
+        offset = random.uniform(-0.18, 0.18) * dist
+        cx = (sx + x) / 2 + nx * offset
+        cy = (sy + y) / 2 + ny * offset
+
+        for i in range(1, steps + 1):
+            t = i / steps
+            # Smoothstep ease-in-out — accelerate then decelerate
+            te = t * t * (3 - 2 * t)
+            one = 1 - te
+            px = one * one * sx + 2 * one * te * cx + te * te * x
+            py = one * one * sy + 2 * one * te * cy + te * te * y
+            await page.mouse.move(px, py)
+        session.cursor_x, session.cursor_y = x, y
 
     async def _click_element(self, page, session: HuntSession, element):
         """Click with visible cursor movement. Fails fast (8s) and force-clicks on
@@ -1539,6 +1623,16 @@ and upload_resume if there's a file upload. When all fields are filled, call for
 
         session.emit({"type": "status", "message": "Starting autonomous hunt..."})
 
+        # Cross-hunt memory: skip URLs the user has already decided about,
+        # unless they've explicitly resurfaced one.
+        try:
+            prior = _load_user_skipped_urls(session.user_id, db_session_factory)
+            if prior:
+                session.seen_urls |= prior
+                session.emit({"type": "thinking", "message": f"Remembering {len(prior)} job(s) you've already skipped — I'll steer around them."})
+        except Exception:
+            pass
+
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
                 headless=True,
@@ -1743,6 +1837,13 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         session.emit({"type": "action", "message": f"Navigation failed: {str(e)[:60]}"})
                         continue
 
+                    # Visible search — type the query into LinkedIn's search box
+                    # so the user sees the agent actually searching, instead of
+                    # the boxes appearing pre-filled out of nowhere.
+                    if board == 'linkedin':
+                        session.emit({"type": "action", "message": f"Typing '{query}' into the search box..."})
+                        await self._visualize_linkedin_search(page, query, location, session)
+
                     # Smooth scroll to load more jobs (visible to user)
                     session.emit({"type": "action", "message": f"Scrolling through {board_display} results..."})
                     await self._smooth_scroll(page, 2400, steps=6)
@@ -1821,6 +1922,16 @@ and upload_resume if there's a file upload. When all fields are filled, call for
 
                     # ── Phase 4: Apply to qualifying jobs ────────────────
                     apply_jobs = [j for j in new_jobs if j.get('score', 0) >= 70]
+                    # Fallback: if nothing cleared 70 AND we haven't applied to
+                    # anything on this board yet, try the top 3 anyway instead
+                    # of immediately moving on. Avoids "scored a batch, gave up
+                    # on LinkedIn after one apply failure" behavior.
+                    if not apply_jobs and total_applied == 0 and new_jobs:
+                        apply_jobs = sorted(new_jobs, key=lambda j: j.get('score', 0), reverse=True)[:3]
+                        if apply_jobs:
+                            session.emit({"type": "thinking",
+                                "message": f"Nothing hit my 70% bar on {board_display}, but I'll still try the top "
+                                           f"{len(apply_jobs)} — best is {apply_jobs[0].get('score', 0)}%."})
                     if apply_jobs:
                         session.emit({"type": "status", "message": f"Applying to {len(apply_jobs)} matched jobs..."})
 
@@ -2034,6 +2145,36 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         # ── Submit ───────────────────────────────────────
                         submitted = await self._submit_application(page, session)
 
+                        # If we couldn't submit AND the form-fill flagged concerns
+                        # (missing dropdown values, unknown required fields, etc.),
+                        # ask the user for the answers and retry the fill+submit
+                        # ONCE. This rescues the common "stuck on the Japanese-level
+                        # dropdown" failure mode instead of silently giving up.
+                        if (not submitted) and concerns and not session._stopped:
+                            concern_list = "\n".join(f"• {c}" for c in concerns[:8])
+                            ans = await self._ask_question(
+                                session,
+                                (
+                                    f"This form has fields I couldn't fill from your profile:\n{concern_list}\n\n"
+                                    "Type your answers in one message — be as natural as you want "
+                                    "(e.g., 'Business level Japanese, 5 years NLP, willing to start in 2 weeks'). "
+                                    "I'll plug them in and try again."
+                                ),
+                                options=["Skip this one"],
+                            )
+                            if ans and not ans.lower().startswith("skip") and not session._stopped:
+                                # Splice the user's answers into custom_answers for THIS session
+                                # so Opus can use them on the retry. Key: the concern text itself.
+                                extras = dict(user.get('custom_answers') or {})
+                                for c in concerns[:8]:
+                                    extras[str(c)[:120]] = ans
+                                extras["unresolved field answers"] = ans
+                                user['custom_answers'] = extras
+                                session.emit({"type": "thinking", "message": "Got it — retrying the form with your answers."})
+                                retry = await self._opus_fill_form(page, user, resume_path, session, job_title, company)
+                                concerns = retry.get('concerns', []) or concerns
+                                submitted = await self._submit_application(page, session)
+
                         if submitted:
                             session.jobs_applied += 1
                             total_applied        += 1
@@ -2105,20 +2246,59 @@ def _persist_seen_url(session: HuntSession, url: str, factory):
 
 
 def _persist_decision(session: HuntSession, decision: dict, factory):
-    """Append one decision/submitted entry to hunt_sessions.log so the history
-    view can show which jobs the agent looked at, their match scores, and links."""
+    """Append a decision to hunt_sessions.log AND to user_job_decisions so the
+    next hunt remembers we already saw this URL (and the user can resurface it)."""
     try:
         db = factory()
         from app import models as m
+        # Per-hunt log (existing behavior — drives the history detail view)
         hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
         if hs:
             existing = list(hs.log or [])
             existing.append(decision)
             hs.log = existing
-            db.commit()
+        # Per-user decision memory (new — drives cross-hunt skip/resurface)
+        url = decision.get("url")
+        if url:
+            decision_type = "submitted" if decision.get("type") == "submitted" else (
+                "applied" if decision.get("decision") == "apply" else "skipped"
+            )
+            db.add(m.UserJobDecision(
+                user_id=session.user_id,
+                job_url=url,
+                decision=decision_type,
+                title=decision.get("title"),
+                company=decision.get("company"),
+                location=decision.get("location"),
+                match_score=decision.get("match_score"),
+                reason=decision.get("reason"),
+                hunt_session_id=session.hunt_id,
+            ))
+        db.commit()
         db.close()
     except Exception:
-        pass
+        try: db.close()
+        except: pass
+
+
+def _load_user_skipped_urls(user_id: int, factory) -> set[str]:
+    """Return URLs the user has previously skipped that haven't been resurfaced.
+    Resurface = delete the skipped row, so a simple "any row exists with
+    decision='skipped'" check is the right gate."""
+    urls: set[str] = set()
+    try:
+        db = factory()
+        from app import models as m
+        rows = db.query(m.UserJobDecision.job_url).filter(
+            m.UserJobDecision.user_id == user_id,
+            m.UserJobDecision.decision == "skipped",
+        ).all()
+        urls = {r[0] for r in rows if r[0]}
+        db.close()
+    except Exception:
+        try: db.close()
+        except: pass
+    return urls
 
 
 def _persist_stats(session: HuntSession, factory):
