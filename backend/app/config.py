@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # lower = faster (and less "watchable"/stealthy). Tune up toward 1.0 if a board
     # starts throwing CAPTCHAs. Inference latency (LLM round-trips) is a separate
     # lower bound set by form_fill_model.
-    hunt_speed_factor: float = 0.2
+    hunt_speed_factor: float = 0.15
 
     # Clerk auth
     clerk_secret_key: str = ""
@@ -81,3 +81,14 @@ CREDITS_AI_APPLY = 1        # generate cover letter + analysis
 CREDITS_BROWSER_APPLY = 3   # full browser form filling + submit
 CREDITS_HUNT_SESSION = 5    # full autonomous job hunt
 FREE_CREDITS_ON_SIGNUP = 5  # everyone starts with 5 free credits
+
+# ─── Pricing model (dormant knobs for documentation + future dynamic pricing) ─
+# Per-credit retail value is roughly $0.40 at the Standard pack ($15 → 40 credits).
+# Track raw Claude $/action elsewhere; when Anthropic prices change, bump
+# CLAUDE_COST_PER_HUNT_USD or move the credit cost (CREDITS_HUNT_SESSION) up,
+# while keeping `target_margin_multiplier` your floor.
+USD_PER_CREDIT_STANDARD = 0.40
+TARGET_MARGIN_MULTIPLIER = 5.0           # ≥ 5× raw Claude cost → retail credit value
+CLAUDE_COST_PER_HUNT_USD = 0.30          # current average raw cost per hunt session
+CLAUDE_COST_PER_AI_APPLY_USD = 0.05      # current average raw cost per AI-only apply
+CLAUDE_COST_PER_BROWSER_APPLY_USD = 0.15 # current average raw cost per browser apply
