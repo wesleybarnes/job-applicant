@@ -16,11 +16,30 @@ class GoalsRequest(BaseModel):
     regenerate: bool = True          # regenerate the AI summary from goals
 
 
-async def _generate_goal_summary(user: models.UserProfile, survey: Optional[dict]) -> str:
-    """Use the configured model to distill goals + profile into a tight summary."""
+async def _generate_goal_summary(
+    user: models.UserProfile,
+    survey: Optional[dict],
+    db: Session,
+) -> str:
+    """Use the configured model to distill goals + profile + resume into a tight summary.
+
+    Pulling the active resume into the prompt is what makes "regenerate after a new
+    resume" actually pick up the new content.
+    """
     survey_text = ""
     if survey:
         survey_text = "\n".join(f"- {q}: {a}" for q, a in survey.items() if a)
+
+    resume = db.query(models.Resume).filter(
+        models.Resume.user_id == user.id,
+        models.Resume.is_active == True,
+    ).order_by(models.Resume.created_at.desc()).first()
+    resume_excerpt = ""
+    if resume and resume.parsed_text:
+        # Cap to keep token cost bounded; the goal summary doesn't need the full resume,
+        # just enough to recognize the role and seniority signals.
+        resume_excerpt = f"\n\nActive resume excerpt:\n{resume.parsed_text[:3500]}"
+
     prompt = f"""Write a concise job-search goal summary (2-4 sentences, first person) for this candidate.
 It will steer which job sites to search and how jobs are scored, so be specific about role, level, location/relocation, and any deal-breakers.
 
@@ -32,7 +51,7 @@ Skills: {', '.join(user.skills or [])}
 Existing summary: {user.summary or 'N/A'}
 Stated goals: {user.goals or 'N/A'}
 Survey answers:
-{survey_text or 'N/A'}
+{survey_text or 'N/A'}{resume_excerpt}
 
 Return only the summary text, no preamble."""
     try:
@@ -57,10 +76,12 @@ async def set_goals(
     db: Session = Depends(get_db),
 ):
     """Save free-form goals and (re)generate the editable AI goal summary."""
+    from datetime import datetime, timezone
     if body.goals is not None:
         user.goals = body.goals
     if body.regenerate:
-        user.goal_summary = await _generate_goal_summary(user, body.survey)
+        user.goal_summary = await _generate_goal_summary(user, body.survey, db)
+        user.goal_summary_updated_at = datetime.now(timezone.utc)
     db.commit()
     db.refresh(user)
     return user
@@ -148,7 +169,13 @@ def update_me(
     user: models.UserProfile = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    for field, value in update.model_dump(exclude_unset=True).items():
+    fields = update.model_dump(exclude_unset=True)
+    # Manual edits to the goal summary also bump its updated_at so we can flag
+    # staleness against a newer resume (and undo it when the user edits in time).
+    if "goal_summary" in fields:
+        from datetime import datetime, timezone
+        user.goal_summary_updated_at = datetime.now(timezone.utc)
+    for field, value in fields.items():
         setattr(user, field, value)
     db.commit()
     db.refresh(user)

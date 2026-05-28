@@ -25,13 +25,23 @@ export default function HuntPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [hasResume, setHasResume] = useState(false)
+  const [activeResume, setActiveResume] = useState(null)   // for the "resume changed" hint
 
   // ── Goals (editable AI summary + survey re-generation) ──────────────
   const [goalSummary, setGoalSummary] = useState(appUser?.goal_summary || '')
   const [editingGoals, setEditingGoals] = useState(false)
+  const [refining, setRefining] = useState(false)            // quick-refine panel open
+  const [refineSuggestion, setRefineSuggestion] = useState('')
   const [survey, setSurvey] = useState({ what: '', where: '', deal_breakers: '' })
   const [goalsBusy, setGoalsBusy] = useState(false)
   useEffect(() => { setGoalSummary(appUser?.goal_summary || '') }, [appUser?.goal_summary])
+
+  // "Resume changed since the summary was written" — true when the active resume
+  // post-dates the user's goal_summary_updated_at.
+  const summaryStaleVsResume = (() => {
+    if (!activeResume?.created_at || !appUser?.goal_summary_updated_at) return false
+    return new Date(activeResume.created_at).getTime() > new Date(appUser.goal_summary_updated_at).getTime()
+  })()
 
   // ── History detail (click a past hunt to see what it looked at) ────
   const [detailId, setDetailId] = useState(null)
@@ -46,7 +56,14 @@ export default function HuntPage() {
   const isAdmin = appUser?.is_admin
   const canHunt = hasResume && (isAdmin || credits >= 5)
 
-  useEffect(() => { if (appUser?.id) getResumes(appUser.id).then(r => setHasResume(r.some(x => x.is_active))).catch(() => {}) }, [appUser?.id])
+  useEffect(() => {
+    if (!appUser?.id) return
+    getResumes(appUser.id).then(rs => {
+      const active = rs.find(x => x.is_active) || null
+      setHasResume(!!active)
+      setActiveResume(active)
+    }).catch(() => {})
+  }, [appUser?.id, appUser?.goal_summary_updated_at])
   useEffect(() => { listHuntSessions().then(setSessions).catch(() => {}).finally(() => setSessionsLoading(false)) }, [activeHuntId])
 
   const handleStart = async () => {
@@ -86,6 +103,26 @@ export default function HuntPage() {
       await refreshUser()
       setEditingGoals(false)
     } catch { setError('Failed to generate goal summary') }
+    finally { setGoalsBusy(false) }
+  }
+
+  // Quick refine: regenerate from current profile + resume, optionally nudged
+  // by a free-form suggestion the user types in the popover.
+  const handleQuickRefine = async () => {
+    setGoalsBusy(true)
+    const suggestion = refineSuggestion.trim()
+    // Pass the suggestion through both goals (so it's persisted as a tweak hint)
+    // and the survey dict (so the prompt sees it as additional context).
+    const body = suggestion
+      ? { goals: (appUser?.goals ? `${appUser.goals}\n${suggestion}` : suggestion), survey: { 'Additional tweak from user': suggestion }, regenerate: true }
+      : { regenerate: true }
+    try {
+      const updated = await setUserGoals(body)
+      setGoalSummary(updated.goal_summary || '')
+      await refreshUser()
+      setRefining(false)
+      setRefineSuggestion('')
+    } catch { setError('Failed to regenerate goal summary') }
     finally { setGoalsBusy(false) }
   }
 
@@ -144,18 +181,63 @@ export default function HuntPage() {
                 <span className="text-[11px] text-brand-400 font-medium uppercase tracking-wide">Goal summary</span>
               </div>
               {!editingGoals && (
-                <button onClick={() => setEditingGoals(true)} className="flex items-center gap-1 text-[11px] text-ink-tertiary hover:text-ink-primary transition-colors">
-                  <Pencil className="w-3 h-3" /> {goalSummary ? 'Edit' : 'Set'}
-                </button>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => { setRefining(r => !r); setRefineSuggestion('') }}
+                    title={goalSummary ? 'Regenerate or refine with a quick suggestion' : 'Generate from your profile + resume'}
+                    className={`flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded transition-colors ${summaryStaleVsResume ? 'text-amber-300 bg-amber-300/10 hover:bg-amber-300/15' : 'text-brand-300 hover:text-brand-200 hover:bg-brand-500/10'}`}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    {summaryStaleVsResume ? 'Resume changed — refresh' : (goalSummary ? 'Regenerate' : 'Generate')}
+                  </button>
+                  <button onClick={() => setEditingGoals(true)} className="flex items-center gap-1 text-[11px] text-ink-tertiary hover:text-ink-primary transition-colors px-1.5 py-0.5 rounded hover:bg-white/[0.04]">
+                    <Pencil className="w-3 h-3" /> {goalSummary ? 'Edit' : 'Set manually'}
+                  </button>
+                </div>
               )}
             </div>
 
             {!editingGoals ? (
-              goalSummary ? (
-                <p className="text-[12.5px] text-ink-secondary leading-relaxed">{goalSummary}</p>
-              ) : (
-                <p className="text-[12px] text-ink-tertiary italic">No goal summary yet — set one so the agent picks the right job boards and scores jobs against what you actually want.</p>
-              )
+              <>
+                {goalSummary ? (
+                  <p className="text-[12.5px] text-ink-secondary leading-relaxed">{goalSummary}</p>
+                ) : (
+                  <p className="text-[12px] text-ink-tertiary italic">No goal summary yet — generate one so the agent picks the right job boards and scores jobs against what you actually want.</p>
+                )}
+
+                {refining && (
+                  <div className="mt-3 pt-3 border-t border-white/5 space-y-2 animate-fade-in">
+                    {summaryStaleVsResume && (
+                      <p className="text-[11px] text-amber-300 flex items-start gap-1.5">
+                        <span>⚠</span>
+                        <span>You uploaded a new resume after this summary was written — regenerating will incorporate it.</span>
+                      </p>
+                    )}
+                    <textarea
+                      value={refineSuggestion}
+                      onChange={e => setRefineSuggestion(e.target.value)}
+                      placeholder="Optional: add a quick tweak or suggestion (e.g. 'emphasize backend over frontend', 'I want senior or staff roles only', 'open to relocating to Berlin too')"
+                      rows={2}
+                      className="w-full rounded-lg px-3 py-2 text-[12px] outline-none resize-none"
+                      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', caretColor: '#fff' }}
+                    />
+                    <div className="flex gap-2 items-center">
+                      <button
+                        onClick={handleQuickRefine}
+                        disabled={goalsBusy}
+                        className="btn-primary text-[12px] py-1.5 px-3 disabled:opacity-40 flex items-center gap-1.5"
+                      >
+                        {goalsBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                        {goalsBusy ? 'Writing…' : (refineSuggestion.trim() ? 'Regenerate with this tweak' : 'Regenerate from profile + resume')}
+                      </button>
+                      <button
+                        onClick={() => { setRefining(false); setRefineSuggestion('') }}
+                        className="text-[12px] py-1.5 px-3 text-ink-tertiary hover:text-ink-secondary"
+                      >Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="space-y-3 mt-1">
                 <textarea
