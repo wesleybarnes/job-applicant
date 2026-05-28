@@ -76,6 +76,7 @@ class JobCreate(BaseModel):
     salary_min: Optional[int] = None
     salary_max: Optional[int] = None
     url: Optional[str] = None
+    logo_url: Optional[str] = None
     source: Optional[str] = "manual"
 
 

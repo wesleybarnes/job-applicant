@@ -37,6 +37,10 @@ class HuntSession:
         self._user_instruction: Optional[str] = None
         self._question_event:  asyncio.Event  = asyncio.Event()
         self._question_answer: Optional[str]  = None
+        # Credential-request flow: agent emits credentials_required, frontend posts to /hunt/credentials,
+        # which resolves these. Payload is {username, password, save} or {skip: True}.
+        self._credentials_event: asyncio.Event = asyncio.Event()
+        self._credentials_payload: Optional[dict] = None
         self.jobs_found  = 0
         self.jobs_applied = 0
         self.cursor_x: Optional[int] = None
@@ -88,10 +92,26 @@ class HuntSession:
         self._question_answer = answer
         self._question_event.set()
 
+    def submit_credentials(self, payload: dict):
+        """Resolve a pending credentials_required prompt. payload = {username, password, save}
+        or {skip: True} (user declined to log into this site)."""
+        self._credentials_payload = payload or {"skip": True}
+        self._credentials_event.set()
+
+    async def wait_for_credentials(self) -> dict:
+        """Block until the frontend submits credentials (or skip) for the current site."""
+        self._credentials_event.clear()
+        self._credentials_payload = None
+        await self._credentials_event.wait()
+        return self._credentials_payload or {"skip": True}
+
     def stop(self):
         self._stopped = True
         self._paused  = False
         self._resume_event.set()
+        # Unblock any pending credential wait so the run loop can exit cleanly
+        self._credentials_payload = {"skip": True}
+        self._credentials_event.set()
         self.resolve_confirmation('stop')
 
 
@@ -307,16 +327,128 @@ Pre-written answers: {custom}""".strip()
             pass
         return False
 
+    # ── Per-site credential cache (DB-backed; generic across sites) ─────
+
+    def _load_credential(self, db_factory, user_id: int, site_key: str):
+        """Return {'username', 'password', 'cookies'} for a saved site login,
+        or None. Password is decrypted (None if encryption disabled or absent)."""
+        if not db_factory:
+            return None
+        from app import models as _m
+        from app.services import crypto as _crypto
+        db = db_factory()
+        try:
+            row = db.query(_m.SiteCredential).filter(
+                _m.SiteCredential.user_id == user_id,
+                _m.SiteCredential.site_key == site_key,
+            ).first()
+            if not row:
+                return None
+            return {
+                "username": row.username,
+                "password": _crypto.decrypt(row.password_encrypted) if row.password_encrypted else None,
+                "cookies":  row.cookies or [],
+            }
+        finally:
+            db.close()
+
+    def _save_credential(self, db_factory, user_id: int, site_key: str,
+                         *, username=None, password=None, cookies=None, save_password=True):
+        """Upsert a per-site credential row. Password is encrypted; if encryption
+        is disabled or save_password=False, the password column is left blank
+        (cookies are still cached so future hunts can skip the login form)."""
+        if not db_factory:
+            return
+        from app import models as _m
+        from app.services import crypto as _crypto
+        db = db_factory()
+        try:
+            row = db.query(_m.SiteCredential).filter(
+                _m.SiteCredential.user_id == user_id,
+                _m.SiteCredential.site_key == site_key,
+            ).first()
+            if not row:
+                row = _m.SiteCredential(user_id=user_id, site_key=site_key)
+                db.add(row)
+            if username is not None:
+                row.username = username
+            if password and save_password and _crypto.is_enabled():
+                row.password_encrypted = _crypto.encrypt(password)
+            if cookies is not None:
+                row.cookies = cookies
+            db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+
+    async def _load_site_cookies(self, context, db_factory, user_id: int, site_key: str) -> bool:
+        """Apply saved cookies for the site to the browser context. True if any loaded."""
+        creds = self._load_credential(db_factory, user_id, site_key)
+        cookies = creds.get("cookies") if creds else None
+        if not cookies:
+            return False
+        try:
+            await context.add_cookies(cookies)
+            return True
+        except Exception:
+            return False
+
+    async def _save_site_cookies(self, context, db_factory, user_id: int, site_key: str):
+        """Snapshot the current context cookies into the site's credential row."""
+        try:
+            cookies = await context.cookies()
+            self._save_credential(db_factory, user_id, site_key, cookies=cookies)
+        except Exception:
+            pass
+
+    async def _request_credentials(self, session: 'HuntSession', site_key: str, site_name: str,
+                                   login_url: Optional[str], db_factory, user_id: int) -> Optional[dict]:
+        """Get login credentials for a site — saved if available, else prompt the user.
+
+        Returns {'username','password','save'} or None if the user skipped/stopped.
+        Emits a `credentials_required` event the frontend renders as a popup; resolves
+        via POST /hunt/credentials/{hunt_id}.
+        """
+        # 1) Try saved credentials first
+        saved = self._load_credential(db_factory, user_id, site_key)
+        if saved and saved.get("username") and saved.get("password"):
+            session.emit({"type": "action", "message": f"Using saved {site_name} credentials"})
+            return {"username": saved["username"], "password": saved["password"], "save": False}
+
+        # 2) Otherwise prompt the user via the frontend popup
+        session.emit({
+            "type": "credentials_required",
+            "site_key": site_key,
+            "site": site_name,
+            "login_url": login_url,
+            "message": f"Sign in to {site_name} to continue the hunt. Your password is encrypted if you save it.",
+            "has_saved_username": bool(saved and saved.get("username")),
+            "saved_username": (saved or {}).get("username") or "",
+        })
+        payload = await session.wait_for_credentials()
+        if session._stopped or not payload or payload.get("skip"):
+            return None
+        return {
+            "username": payload.get("username", "").strip(),
+            "password": payload.get("password", ""),
+            "save":     bool(payload.get("save")),
+        }
+
     # ── LinkedIn login (cookie-first, then human-like) ────────────────
 
-    async def _linkedin_login(self, page, user: dict, session: HuntSession) -> bool:
+    async def _linkedin_login(self, page, user: dict, session: HuntSession, db_factory=None) -> bool:
         import random
 
+        # Upfront creds (legacy /start body) take precedence for back-compat
         email    = user.get('linkedin_email')
         password = user.get('linkedin_password')
+        save_password = False  # only set when the user explicitly opts in via the popup
 
-        # Strategy 1: Try saved cookies first (no login needed, no CAPTCHA)
+        # Strategy 1: Try saved cookies (disk legacy + new DB-backed) first — no CAPTCHA risk
         has_cookies = await self._load_cookies(page.context, user)
+        if not has_cookies and db_factory:
+            has_cookies = await self._load_site_cookies(page.context, db_factory, user.get('id'), 'linkedin')
         if has_cookies:
             session.emit({"type": "action", "message": "Loading saved LinkedIn session..."})
             try:
@@ -331,8 +463,18 @@ Pre-written answers: {custom}""".strip()
             except Exception:
                 session.emit({"type": "action", "message": "Cookie load failed — logging in fresh"})
 
+        # Strategy 2: Ask via popup (or use saved encrypted password) if no upfront creds
+        if (not email or not password) and db_factory and user.get('id'):
+            creds = await self._request_credentials(
+                session, "linkedin", "LinkedIn",
+                "https://www.linkedin.com/login", db_factory, user['id'],
+            )
+            if creds:
+                email, password = creds["username"], creds["password"]
+                save_password = creds.get("save", False)
+
         if not email or not password:
-            session.emit({"type": "status", "message": "No LinkedIn credentials — searching as guest"})
+            session.emit({"type": "status", "message": "Skipped LinkedIn login — searching as guest"})
             return False
 
         session.emit({"type": "action", "message": "Logging in to LinkedIn..."})
@@ -428,6 +570,10 @@ Pre-written answers: {custom}""".strip()
             if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
                 session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
                 await self._save_cookies(page.context, user)
+                if db_factory and user.get('id'):
+                    await self._save_site_cookies(page.context, db_factory, user['id'], 'linkedin')
+                    if save_password:
+                        self._save_credential(db_factory, user['id'], 'linkedin', username=email, password=password)
                 return True
             elif any(x in current for x in ["checkpoint", "challenge", "verification", "two-step"]):
                 # CAPTCHA/security check — auto-pause so user can solve it manually
@@ -443,6 +589,10 @@ Pre-written answers: {custom}""".strip()
                 if any(x in current for x in ["feed", "/in/", "mynetwork", "messaging"]):
                     session.emit({"type": "action", "message": "✓ LinkedIn login successful — verification passed"})
                     await self._save_cookies(page.context, user)
+                if db_factory and user.get('id'):
+                    await self._save_site_cookies(page.context, db_factory, user['id'], 'linkedin')
+                    if save_password:
+                        self._save_credential(db_factory, user['id'], 'linkedin', username=email, password=password)
                     return True
                 else:
                     session.emit({"type": "action", "message": "⚠ Still not logged in after verification — continuing as guest"})
@@ -454,6 +604,10 @@ Pre-written answers: {custom}""".strip()
                 if any(x in current for x in ["feed", "/in/", "mynetwork"]):
                     session.emit({"type": "action", "message": "✓ LinkedIn login successful"})
                     await self._save_cookies(page.context, user)
+                if db_factory and user.get('id'):
+                    await self._save_site_cookies(page.context, db_factory, user['id'], 'linkedin')
+                    if save_password:
+                        self._save_credential(db_factory, user['id'], 'linkedin', username=email, password=password)
                     return True
                 # Check for CAPTCHA on the current page (sometimes it's inline, not a redirect)
                 captcha_present = False
@@ -475,6 +629,10 @@ Pre-written answers: {custom}""".strip()
                     if any(x in current for x in ["feed", "/in/", "mynetwork"]):
                         session.emit({"type": "action", "message": "✓ Logged in after CAPTCHA"})
                         await self._save_cookies(page.context, user)
+                if db_factory and user.get('id'):
+                    await self._save_site_cookies(page.context, db_factory, user['id'], 'linkedin')
+                    if save_password:
+                        self._save_credential(db_factory, user['id'], 'linkedin', username=email, password=password)
                         return True
                     return False
                 session.emit({"type": "action", "message": f"⚠ Login result unclear (at: {current[:60]}) — continuing as guest"})
@@ -1117,7 +1275,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
 
             try:
                 # ── Phase 1: Login ────────────────────────────────────────
-                logged_in = await self._linkedin_login(page, user, session)
+                logged_in = await self._linkedin_login(page, user, session, db_factory=db_session_factory)
                 await session.check_paused()
                 if session._stopped:
                     return
@@ -1222,7 +1380,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             apply_count += 1
                         else:
                             skip_count += 1
-                        session.emit({
+                        decision_event = {
                             "type":       "job_decision",
                             "decision":   decision,
                             "title":      job.get('title', ''),
@@ -1231,7 +1389,9 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             "url":        url,
                             "match_score": score,
                             "reason":     job.get('reason', ''),
-                        })
+                        }
+                        session.emit(decision_event)
+                        _persist_decision(session, decision_event, db_session_factory)
                         total_evaluated += 1
 
                     # Build a rich reasoning summary like a recruiter would
@@ -1393,11 +1553,17 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         if submitted:
                             session.jobs_applied += 1
                             total_applied        += 1
-                            session.emit({
+                            submitted_event = {
                                 "type":        "submitted",
                                 "message":     f"✓ Applied to {job_title} at {company}!",
                                 "jobs_applied": session.jobs_applied,
-                            })
+                                "title":       job_title,
+                                "company":     company,
+                                "url":         job_url,
+                                "match_score": score,
+                            }
+                            session.emit(submitted_event)
+                            _persist_decision(session, submitted_event, db_session_factory)
                             _persist_stats(session, db_session_factory)
                         else:
                             session.emit({"type": "action", "message": f"Could not complete submission for {job_title}"})
@@ -1449,6 +1615,23 @@ def _persist_seen_url(session: HuntSession, url: str, factory):
                 existing.append(url)
                 hs.seen_job_urls = existing
                 db.commit()
+        db.close()
+    except Exception:
+        pass
+
+
+def _persist_decision(session: HuntSession, decision: dict, factory):
+    """Append one decision/submitted entry to hunt_sessions.log so the history
+    view can show which jobs the agent looked at, their match scores, and links."""
+    try:
+        db = factory()
+        from app import models as m
+        hs = db.query(m.HuntSession).filter(m.HuntSession.id == session.hunt_id).first()
+        if hs:
+            existing = list(hs.log or [])
+            existing.append(decision)
+            hs.log = existing
+            db.commit()
         db.close()
     except Exception:
         pass

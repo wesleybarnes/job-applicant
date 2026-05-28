@@ -19,6 +19,7 @@ def _run_migrations():
         "ALTER TABLE hunt_sessions ADD COLUMN seen_job_urls JSON",        # v1.1
         "ALTER TABLE user_profiles ADD COLUMN goals TEXT",                # goals survey
         "ALTER TABLE user_profiles ADD COLUMN goal_summary TEXT",         # editable summary
+        "ALTER TABLE jobs ADD COLUMN logo_url VARCHAR(1000)",             # company logos
     ]
     for stmt in statements:
         try:
