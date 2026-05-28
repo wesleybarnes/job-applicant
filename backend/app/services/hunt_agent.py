@@ -601,13 +601,30 @@ Pre-written answers: {custom}""".strip()
             await page.goto("https://www.linkedin.com/login", wait_until="domcontentloaded", timeout=20000)
             await self._pause(random.uniform(1.0, 1.8))
 
-            # Wait for email input to be visible and interactable
-            email_sel = 'input[name="session_key"], input[id="username"]'
+            # Wait for the email field. LinkedIn ships several variants and the
+            # page sometimes renders the form behind a brief interstitial, so:
+            #   • broader selector set,
+            #   • 15s timeout (LinkedIn is slow under bot suspicion),
+            #   • state="attached" tolerates fields that are present but momentarily covered,
+            #   • one reload retry before giving up, with the URL surfaced for debugging.
+            email_sel = (
+                'input[name="session_key"], input[id="username"], '
+                'input[autocomplete="username"], '
+                'input[type="email"][name*="session" i], '
+                'input[type="text"][name*="session" i]'
+            )
             try:
-                await page.wait_for_selector(email_sel, state="visible", timeout=5000)
+                await page.wait_for_selector(email_sel, state="attached", timeout=15000)
             except Exception:
-                session.emit({"type": "action", "message": "⚠ Login form not found — continuing as guest"})
-                return False
+                session.emit({"type": "action", "message": "Login form slow to appear — reloading once..."})
+                try:
+                    await page.reload(wait_until="domcontentloaded", timeout=15000)
+                    await self._pause(1.5)
+                    await page.wait_for_selector(email_sel, state="attached", timeout=10000)
+                except Exception:
+                    here = (page.url or "")[:80]
+                    session.emit({"type": "action", "message": f"⚠ LinkedIn login form not found (at {here}) — continuing as guest"})
+                    return False
 
             email_input = page.locator(email_sel).first
 

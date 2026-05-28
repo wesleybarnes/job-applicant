@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Briefcase, FileText, Crosshair, Zap, Crown, ChevronDown } from 'lucide-react'
+import { LayoutDashboard, Briefcase, FileText, Crosshair, Zap, Crown, ChevronDown, Coins, AlertCircle } from 'lucide-react'
 import { UserButton } from '@clerk/clerk-react'
 import { useAppUser } from '../App'
 import CreditsModal from './CreditsModal'
@@ -53,9 +53,18 @@ export default function Layout() {
           {isAdmin ? (
             <span className="text-[11px] text-brand-400 font-medium flex items-center gap-1"><Crown className="w-3 h-3" /> Admin</span>
           ) : (
-            <button onClick={() => setShowCredits(true)} className="flex items-center gap-1.5 text-[12px] text-ink-tertiary hover:text-ink-secondary transition-colors">
-              <Zap className="w-3 h-3 text-brand-400" />
-              <span>{credits}</span>
+            <button
+              onClick={() => setShowCredits(true)}
+              title={credits < 5 ? "Low credits — click to top up" : "Credits — click to top up"}
+              className={`flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-full border transition-colors ${
+                credits < 5
+                  ? 'text-amber-300 border-amber-300/30 bg-amber-300/10 hover:bg-amber-300/15'
+                  : 'text-brand-300 border-brand-500/25 bg-brand-500/10 hover:bg-brand-500/15'
+              }`}
+            >
+              {credits < 5 ? <AlertCircle className="w-3 h-3" /> : <Coins className="w-3 h-3" />}
+              <span>{credits} {credits === 1 ? 'credit' : 'credits'}</span>
+              {credits < 5 && <span className="text-[10px] opacity-80 ml-0.5">· Top up</span>}
             </button>
           )}
           <div className="w-px h-4 bg-white/[0.08]" />
