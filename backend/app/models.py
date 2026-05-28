@@ -36,6 +36,8 @@ class UserProfile(Base):
     summary = Column(Text)               # professional summary
     availability = Column(String(100))   # immediate/2weeks/1month
     custom_answers = Column(JSON)        # common app questions & answers
+    goals = Column(Text)                 # free-form goals from the pre-hunt survey
+    goal_summary = Column(Text)          # AI-generated, user-editable goal summary
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -107,6 +109,24 @@ class Application(Base):
 
     user = relationship("UserProfile", back_populates="applications")
     job = relationship("Job", back_populates="applications")
+
+
+class SiteCredential(Base):
+    """Per-user, per-site login state for the hunt agent.
+
+    Passwords are stored ENCRYPTED (Fernet) — never plaintext — and only when a
+    CREDENTIALS_SECRET_KEY is configured. Session cookies are cached so later
+    hunts can skip the login (and CAPTCHA) entirely. See services/crypto.py.
+    """
+    __tablename__ = "site_credentials"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user_profiles.id"), nullable=False, index=True)
+    site_key = Column(String(50), nullable=False)   # registry key, e.g. "linkedin"
+    username = Column(String(300))
+    password_encrypted = Column(Text)               # Fernet token (never plaintext)
+    cookies = Column(JSON)                           # cached session cookies
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class CareerChunk(Base):
