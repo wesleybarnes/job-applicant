@@ -53,12 +53,13 @@ export default function JobsPage() {
                 <button key={job.id} onClick={() => setSelectedJob(job)}
                   className={`w-full text-left px-4 py-3 border-b transition-colors ${selectedJob?.id === job.id ? 'bg-white/[0.04]' : 'hover:bg-white/[0.02]'}`}
                   style={{ borderColor: 'rgba(255,255,255,0.04)' }}>
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2.5">
+                    <CompanyLogo logoUrl={job.logo_url} company={job.company} size={32} />
                     <div className="min-w-0 flex-1">
                       <p className={`text-[13px] font-medium truncate ${selectedJob?.id === job.id ? 'text-ink-primary' : 'text-ink-secondary'}`}>{job.title}</p>
                       <p className="text-[11px] text-ink-tertiary truncate mt-0.5">{job.company}{job.location ? ` · ${job.location}` : ''}</p>
                     </div>
-                    {job.match_score >= 70 && <span className="text-[10px] text-brand-400 font-medium flex-shrink-0">{Math.round(job.match_score)}%</span>}
+                    {job.match_score >= 70 && <span className="text-[10px] text-brand-400 font-medium flex-shrink-0 mt-1">{Math.round(job.match_score)}%</span>}
                   </div>
                 </button>
               ))}
@@ -78,7 +79,9 @@ export default function JobsPage() {
           <div className="max-w-2xl p-8 animate-fade-in" key={selectedJob.id}>
             {/* Header */}
             <div className="flex items-start justify-between mb-6">
-              <div>
+              <div className="flex items-start gap-3 min-w-0">
+                <CompanyLogo logoUrl={selectedJob.logo_url} company={selectedJob.company} size={48} />
+                <div className="min-w-0">
                 <h1 className="text-[20px] font-medium text-ink-primary tracking-tight mb-1">{selectedJob.title}</h1>
                 <p className="text-[14px] text-ink-secondary">{selectedJob.company}</p>
                 <div className="flex items-center gap-3 mt-2 text-[12px] text-ink-tertiary">
@@ -92,6 +95,7 @@ export default function JobsPage() {
                       {selectedJob.salary_max ? `${Math.round(selectedJob.salary_max/1000)}k` : ''}
                     </span>
                   )}
+                </div>
                 </div>
               </div>
 
@@ -146,6 +150,31 @@ export default function JobsPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function CompanyLogo({ logoUrl, company, size = 32 }) {
+  const [failed, setFailed] = useState(false)
+  const initial = (company || '?').trim().charAt(0).toUpperCase()
+  const dims = { width: size, height: size }
+  if (logoUrl && !failed) {
+    return (
+      <img
+        src={logoUrl}
+        alt={company}
+        onError={() => setFailed(true)}
+        loading="lazy"
+        style={{ ...dims, objectFit: 'contain', background: 'white', borderRadius: 6, flexShrink: 0 }}
+      />
+    )
+  }
+  return (
+    <div
+      className="flex items-center justify-center text-ink-secondary font-medium flex-shrink-0"
+      style={{ ...dims, background: 'rgba(255,255,255,0.05)', borderRadius: 6, fontSize: Math.round(size * 0.42) }}
+    >
+      {initial}
     </div>
   )
 }

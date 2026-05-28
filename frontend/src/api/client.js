@@ -77,8 +77,14 @@ export const createCheckout = (packId) => api.post(`/payments/checkout/${packId}
 // ─── Hunt ─────────────────────────────────────────────────────────────────────
 export const startHunt = (body = {}) => api.post('/hunt/start', body).then(r => r.data)
 export const listHuntSessions = () => api.get('/hunt/sessions').then(r => r.data)
+export const getHuntSessionDetail = (id) => api.get(`/hunt/sessions/${id}`).then(r => r.data)
+export const saveHuntJob = (sessionId, job) => api.post(`/hunt/sessions/${sessionId}/save-job`, job).then(r => r.data)
 export const pauseHunt = (id) => api.post(`/hunt/pause/${id}`).then(r => r.data)
 export const resumeHunt = (id, instruction) => api.post(`/hunt/resume/${id}`, { instruction }).then(r => r.data)
 export const interactWithHunt = (id, action) => api.post(`/hunt/interact/${id}`, action).then(r => r.data)
+export const submitHuntCredentials = (id, body) => api.post(`/hunt/credentials/${id}`, body).then(r => r.data)
+
+// ─── Goals ──────────────────────────────────────────────────────────────────
+export const setUserGoals = (body) => api.post('/users/me/goals', body).then(r => r.data)
 
 export default api
