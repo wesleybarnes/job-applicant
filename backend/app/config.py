@@ -27,6 +27,13 @@ class Settings(BaseSettings):
     # lower bound set by form_fill_model.
     hunt_speed_factor: float = 0.15
 
+    # Hard ceiling on the raw Claude $ spent per hunt session. When the
+    # accumulated cost crosses this number, the agent emits a "continue or stop"
+    # question to the user and pauses until they answer. Each "continue" raises
+    # the working ceiling by this amount again. Protects worst-case margins on
+    # heavy hunts where today's 5-credit fixed price would otherwise be eaten.
+    hunt_cost_ceiling_usd: float = 0.80
+
     # Clerk auth
     clerk_secret_key: str = ""
     clerk_publishable_key: str = ""

@@ -34,6 +34,7 @@ export default function HuntView({ huntId, onClose }) {
   const [credentialsData, setCredentialsData] = useState(null)   // { site, site_key, login_url, saved_username }
   const [credForm, setCredForm] = useState({ username: '', password: '', save: true, showPassword: false })
   const [stats, setStats]           = useState({ found: 0, applied: 0 })
+  const [costUsd, setCostUsd]       = useState(0)
   const [finalMessage, setFinalMessage] = useState(null)
   const [tab, setTab]               = useState('decisions')
   const [instruction, setInstruction] = useState('')
@@ -73,6 +74,9 @@ export default function HuntView({ huntId, onClose }) {
         if (event.cx != null) setCursor({ cx: event.cx, cy: event.cy }); break
       case 'action': case 'status': addLog(event); break
       case 'thinking': addLog({ ...event, type: 'thinking' }); break
+      case 'cost_update':
+        if (typeof event.cost_usd === 'number') setCostUsd(event.cost_usd)
+        break
       case 'job_decision':
         setDecisions(prev => [...prev, { ...event, id: Date.now() + Math.random() }])
         if (event.decision === 'apply') setStats(s => ({ ...s, found: s.found + 1 })); break
@@ -175,6 +179,16 @@ export default function HuntView({ huntId, onClose }) {
           <div className="flex items-center gap-4 text-sm">
             <span className="text-zinc-400">{stats.found} found</span>
             <span className="text-emerald-400 font-bold">{stats.applied} applied</span>
+            <span
+              title="Running Claude $ for this hunt (server-side cost)"
+              className={`font-mono text-xs px-2 py-0.5 rounded-full border ${
+                costUsd >= 0.5
+                  ? 'text-amber-300 border-amber-300/30 bg-amber-300/10'
+                  : 'text-zinc-400 border-white/[0.08] bg-white/[0.03]'
+              }`}
+            >
+              ${costUsd.toFixed(2)}
+            </span>
           </div>
           {status === 'running' && <button onClick={handlePause} className="flex items-center gap-1.5 bg-white/8 hover:bg-white/12 text-amber-400 px-3 py-1.5 rounded-xl font-semibold text-sm border border-white/10 transition-colors"><Pause className="w-3.5 h-3.5" /> Pause</button>}
           {isActive && <button onClick={handleStop} className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-xl font-semibold text-sm transition-colors"><Square className="w-3.5 h-3.5" /> Stop</button>}
