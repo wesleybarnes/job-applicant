@@ -441,6 +441,119 @@ Pre-written answers: {custom}""".strip()
             "save":     bool(payload.get("save")),
         }
 
+    # ── Generic per-site login (any site_key in the curated registry) ─
+
+    async def _site_login(self, page, site_key: str, user: dict, session: 'HuntSession', db_factory=None) -> bool:
+        """Sign in to any registered site, cookie-first then credentials.
+
+        Returns True on a logged-in session. Cookie-first (from SiteCredential),
+        then `_request_credentials` (saved encrypted password or popup), then
+        fill the form using the registry's selectors with generic fallbacks.
+        On success: caches cookies, and saves the encrypted password if the user
+        opted in. LinkedIn keeps its specialized path; this is for everything else.
+        """
+        from app.services.site_registry import SITES
+        site = SITES.get(site_key)
+        if not site:
+            return False
+        name = site["name"]
+        login_url = site.get("login_url")
+        if not login_url:
+            return False  # site doesn't expose a login flow
+        user_id = user.get("id")
+        login_cfg = site.get("login") or {}
+        success_markers = login_cfg.get("success") or []
+
+        # 1) Try cached cookies first — usually the fastest path
+        if user_id and db_factory:
+            if await self._load_site_cookies(page.context, db_factory, user_id, site_key):
+                session.emit({"type": "action", "message": f"Loaded saved {name} session"})
+                return True
+
+        # 2) Get credentials (saved encrypted password, or via the popup)
+        creds = await self._request_credentials(session, site_key, name, login_url, db_factory, user_id)
+        if not creds:
+            session.emit({"type": "action", "message": f"Skipping {name} login"})
+            return False
+
+        session.emit({"type": "action", "message": f"Logging in to {name}..."})
+        try:
+            await page.goto(login_url, wait_until="domcontentloaded", timeout=20000)
+            await self._pause(1.0)
+
+            user_sel = login_cfg.get("user") or 'input[type="email"], input[name*="email" i], input[name*="user" i], input[autocomplete="username"]'
+            pass_sel = login_cfg.get("pass") or 'input[type="password"]'
+            submit_sel = login_cfg.get("submit") or 'button[type="submit"], input[type="submit"]'
+
+            u_in = page.locator(user_sel).first
+            if await u_in.count() == 0:
+                session.emit({"type": "action", "message": f"⚠ Could not find {name} login form"})
+                return False
+            await self._human_type(page, u_in, creds["username"], session)
+
+            p_in = page.locator(pass_sel).first
+            if await p_in.count() == 0:
+                # Some sites (e.g. Wantedly) split the flow over two pages — press Enter to advance
+                await page.keyboard.press("Enter")
+                await self._pause(1.2)
+                p_in = page.locator(pass_sel).first
+            if await p_in.count() == 0:
+                session.emit({"type": "action", "message": f"⚠ {name} password field not found"})
+                return False
+            await self._human_type(page, p_in, creds["password"], session)
+
+            sb = page.locator(submit_sel).first
+            if await sb.count() > 0 and await sb.is_visible():
+                await self._click_element(page, session, sb)
+            else:
+                await page.keyboard.press("Enter")
+
+            try:
+                await page.wait_for_load_state("networkidle", timeout=8000)
+            except Exception:
+                await self._pause(2)
+
+            url_now = page.url
+            # Success: a configured success marker is hit, or we're no longer on a login URL
+            if success_markers:
+                logged = any(m in url_now for m in success_markers)
+            else:
+                logged = ("login" not in url_now.lower() and "signin" not in url_now.lower())
+
+            if logged:
+                session.emit({"type": "action", "message": f"✓ Signed in to {name}"})
+                if user_id and db_factory:
+                    await self._save_site_cookies(page.context, db_factory, user_id, site_key)
+                    if creds.get("save"):
+                        self._save_credential(db_factory, user_id, site_key,
+                                              username=creds["username"], password=creds["password"])
+                return True
+
+            # CAPTCHA / 2FA fallback — pause once, let the user solve it manually, then retry
+            session.emit({"type": "thinking",
+                          "message": f"{name} needs verification (CAPTCHA or 2FA). Pausing — solve it in the browser, then click Resume."})
+            session.pause()
+            await session.check_paused()
+            if session._stopped:
+                return False
+            await self._pause(1)
+            url_now = page.url
+            logged = any(m in url_now for m in success_markers) if success_markers else ("login" not in url_now.lower())
+            if logged:
+                session.emit({"type": "action", "message": f"✓ Signed in to {name} after verification"})
+                if user_id and db_factory:
+                    await self._save_site_cookies(page.context, db_factory, user_id, site_key)
+                    if creds.get("save"):
+                        self._save_credential(db_factory, user_id, site_key,
+                                              username=creds["username"], password=creds["password"])
+                return True
+
+            session.emit({"type": "action", "message": f"⚠ {name} login unclear — continuing as guest"})
+            return False
+        except Exception as e:
+            session.emit({"type": "action", "message": f"⚠ {name} login error: {str(e)[:80]}"})
+            return False
+
     # ── LinkedIn login (cookie-first, then human-like) ────────────────
 
     async def _linkedin_login(self, page, user: dict, session: HuntSession, db_factory=None) -> bool:
@@ -1300,12 +1413,28 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                 if not logged_in:
                     boards.append('linkedin')  # Put at end as fallback for public listings
 
+                # If the user has a goal summary, let the curated site registry pick
+                # the most relevant boards (e.g. "move to Japan" → Japan boards first).
+                # We only reorder boards we already know how to extract from; the rest
+                # come along after.
+                if user.get('goal_summary'):
+                    try:
+                        from app.services.site_registry import rank_sites
+                        EXTRACTABLE = {'linkedin', 'indeed', 'google_jobs', 'tokyodev'}
+                        ranked = [b for b in rank_sites(user, user.get('goal_summary'), limit=6) if b in EXTRACTABLE]
+                        # preserve any boards not surfaced by rank_sites, in their original order
+                        rest    = [b for b in boards if b not in ranked]
+                        boards  = ranked + rest
+                    except Exception:
+                        pass
+
                 session.emit({"type": "thinking", "message": f"Planning hunt strategy: searching {len(boards)} job boards for '{', '.join(user.get('target_roles') or ['jobs'])}' in '{', '.join(user.get('target_locations') or ['your area'])}'. Will evaluate each listing against your profile and apply to strong matches."})
 
                 total_evaluated = 0
                 total_applied   = 0
                 MAX_EVALUATE    = 40
                 MAX_APPLY       = 10  # increased from 8
+                site_login_attempted: dict[str, bool] = {}  # board → True once we've tried login this session
 
                 for board in boards:
                     if session._stopped or total_evaluated >= MAX_EVALUATE or total_applied >= MAX_APPLY:
@@ -1335,6 +1464,20 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         url = f"https://www.google.com/search?q={q}+jobs+{loc}&ibp=htl;jobs"
 
                     board_display = {'linkedin': 'LinkedIn', 'indeed': 'Indeed', 'google_jobs': 'Google Jobs', 'tokyodev': 'TokyoDev'}.get(board, board.title())
+
+                    # Per-site login for non-LinkedIn boards that require auth (LinkedIn is
+                    # handled by _linkedin_login at session start). We attempt once per board
+                    # per session; if the user skips, we still try to browse listings as guest.
+                    if board != 'linkedin' and not site_login_attempted.get(board):
+                        try:
+                            from app.services.site_registry import SITES as _SITES
+                            _site = _SITES.get(board)
+                            if _site and _site.get("requires_login"):
+                                await self._site_login(page, board, user, session, db_factory=db_session_factory)
+                                site_login_attempted[board] = True
+                        except Exception:
+                            site_login_attempted[board] = True
+
                     session.emit({"type": "action", "message": f"Opening {board_display} — searching for '{query}' in '{location}'"})
                     try:
                         await page.goto(url, wait_until="domcontentloaded", timeout=20000)
@@ -1453,13 +1596,35 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             session.emit({"type": "action", "message": f"Could not open job page — {str(e)[:50]}"})
                             continue
 
-                        # Detect LinkedIn login/auth redirect — skip instead of getting stuck
+                        # Detect login/auth redirect on the apply page. If the site has a
+                        # registry login URL and we haven't yet logged in for it this session,
+                        # prompt for credentials and retry the apply — otherwise the user
+                        # would just see "no application page" (the TokyoDev bug).
                         current_url = page.url.lower()
-                        if any(x in current_url for x in ['login', 'authwall', 'checkpoint', 'challenge', 'signup', 'uas/login', 'verification']):
+                        login_wall = any(x in current_url for x in ['login', 'authwall', 'checkpoint', 'challenge', 'signup', 'uas/login', 'verification'])
+                        if login_wall:
+                            try:
+                                from app.services.site_registry import SITES as _SITES
+                                _site = _SITES.get(board)
+                            except Exception:
+                                _site = None
+                            if _site and _site.get("login_url") and board != 'linkedin' and not site_login_attempted.get(board):
+                                session.emit({"type": "thinking", "message": f"{board_display} needs login to apply — prompting for credentials..."})
+                                ok = await self._site_login(page, board, user, session, db_factory=db_session_factory)
+                                site_login_attempted[board] = True
+                                if ok:
+                                    try:
+                                        await page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
+                                        await self._pause(1.0)
+                                        current_url = page.url.lower()
+                                        login_wall = any(x in current_url for x in ['login', 'authwall', 'checkpoint', 'challenge', 'signup', 'uas/login', 'verification'])
+                                    except Exception:
+                                        pass
+                        if login_wall:
                             if not logged_in and board == 'linkedin':
                                 session.emit({"type": "thinking", "message": f"LinkedIn requires login to apply. Skipping all remaining LinkedIn jobs — try adding credentials for full access."})
                                 break  # break out of apply_jobs loop entirely
-                            session.emit({"type": "thinking", "message": f"This job requires login. Skipping."})
+                            session.emit({"type": "thinking", "message": f"This job requires login and we couldn't sign in. Skipping."})
                             continue
 
                         # Scroll to read the listing (visible to user)
