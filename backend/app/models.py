@@ -113,6 +113,33 @@ class Application(Base):
     job = relationship("Job", back_populates="applications")
 
 
+class AllowlistEmail(Base):
+    """Closed-beta allowlist. Emails here can complete onboarding; anyone else
+    is shown a "beta is invite-only" screen. Admins add via /admin/allowlist."""
+    __tablename__ = "allowlist_emails"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(300), unique=True, index=True, nullable=False)
+    notes = Column(Text)              # e.g. "friend from college", "investor"
+    added_by = Column(String(200))    # email or identifier of whoever added it
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Feedback(Base):
+    """Free-form user feedback. The daily digest scheduler emails new rows to
+    the admin once a day; otherwise queryable via GET /admin/feedback."""
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user_profiles.id"), nullable=True, index=True)
+    email = Column(String(300))       # captured for context even if user_id is set
+    category = Column(String(50))     # bug | feature | general | other
+    page = Column(String(200))        # where in the app it was submitted
+    message = Column(Text, nullable=False)
+    delivered = Column(Boolean, default=False)  # included in a daily digest yet?
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 class SiteCredential(Base):
     """Per-user, per-site login state for the hunt agent.
 

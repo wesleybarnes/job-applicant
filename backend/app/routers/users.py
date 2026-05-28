@@ -141,7 +141,20 @@ def complete_onboarding(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    is_admin = data.email.lower() == settings.admin_email.lower()
+    email_n = (data.email or "").lower().strip()
+    is_admin = bool(settings.admin_email) and email_n == settings.admin_email.lower()
+
+    # Closed-beta gate: reject onboarding unless the email is on the allowlist
+    # (or matches the configured admin). The frontend pre-checks via
+    # /admin/allowlist/check so the form isn't shown to non-allowed users,
+    # but enforce here too as the source of truth.
+    if settings.invite_only and not is_admin:
+        on_list = db.query(models.AllowlistEmail).filter(models.AllowlistEmail.email == email_n).first()
+        if not on_list:
+            raise HTTPException(
+                status_code=403,
+                detail="Envia is in closed beta. This email isn't on the invite list yet.",
+            )
 
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(user, field, value)

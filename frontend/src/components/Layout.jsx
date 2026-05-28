@@ -4,6 +4,7 @@ import { LayoutDashboard, Briefcase, FileText, Crosshair, Zap, Crown, ChevronDow
 import { UserButton } from '@clerk/clerk-react'
 import { useAppUser } from '../App'
 import CreditsModal from './CreditsModal'
+import FeedbackButton from './FeedbackButton'
 import clsx from 'clsx'
 
 const NAV = [
@@ -78,6 +79,9 @@ export default function Layout() {
       </main>
 
       {showCredits && <CreditsModal onClose={() => setShowCredits(false)} />}
+
+      {/* Always-on feedback button (floating bottom-right) */}
+      <FeedbackButton />
     </div>
   )
 }

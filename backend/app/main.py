@@ -5,7 +5,7 @@ import os
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import users, resume, jobs, applications, browser, payments, hunt
+from app.routers import users, resume, jobs, applications, browser, payments, hunt, admin, feedback
 from app import models  # noqa — ensure models are registered before create_all
 
 # Create all DB tables
@@ -62,6 +62,34 @@ app.include_router(applications.router, prefix="/api")
 app.include_router(browser.router, prefix="/api")
 app.include_router(payments.router, prefix="/api")
 app.include_router(hunt.router, prefix="/api")
+app.include_router(admin.router, prefix="/api")
+app.include_router(feedback.router, prefix="/api")
+
+
+@app.on_event("startup")
+async def _on_startup():
+    """Auto-allowlist the admin email + start the daily feedback-digest loop."""
+    import asyncio
+    from app.database import SessionLocal
+    # 1. Make sure the admin email can always complete onboarding.
+    if settings.admin_email:
+        db = SessionLocal()
+        try:
+            email_n = settings.admin_email.lower().strip()
+            exists = db.query(models.AllowlistEmail).filter(models.AllowlistEmail.email == email_n).first()
+            if not exists:
+                db.add(models.AllowlistEmail(email=email_n, notes="admin (auto)", added_by="startup"))
+                db.commit()
+        except Exception:
+            db.rollback()
+        finally:
+            db.close()
+    # 2. Spawn the daily digest scheduler as a background task.
+    try:
+        from app.services.feedback_digest import daily_digest_loop
+        asyncio.create_task(daily_digest_loop(SessionLocal))
+    except Exception:
+        pass  # never block boot on a scheduler error
 
 # Serve uploaded files
 os.makedirs(settings.upload_dir, exist_ok=True)
