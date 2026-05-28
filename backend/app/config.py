@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     # only session cookies are cached. Set this in Railway to enable "save password".
     credentials_secret_key: str = ""
 
+    # Master switch for the new per-site credential popup flow. Off until the
+    # frontend popup is wired — otherwise a hunt with no upfront creds would emit
+    # credentials_required and hang waiting for a response that can't come.
+    # Saved-credential reuse still works regardless of this flag.
+    hunt_credential_popup_enabled: bool = False
+
     # Stripe
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""

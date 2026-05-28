@@ -410,13 +410,19 @@ Pre-written answers: {custom}""".strip()
         Emits a `credentials_required` event the frontend renders as a popup; resolves
         via POST /hunt/credentials/{hunt_id}.
         """
-        # 1) Try saved credentials first
+        # 1) Try saved credentials first — always safe; doesn't need a popup UI
         saved = self._load_credential(db_factory, user_id, site_key)
         if saved and saved.get("username") and saved.get("password"):
             session.emit({"type": "action", "message": f"Using saved {site_name} credentials"})
             return {"username": saved["username"], "password": saved["password"], "save": False}
 
-        # 2) Otherwise prompt the user via the frontend popup
+        # 2) Otherwise we'd prompt via the frontend popup — but only when the popup
+        # is shipped. Without a popup-capable client this would hang the hunt waiting
+        # for a response that can't come, so we skip silently and the caller falls
+        # back to guest mode.
+        if not settings.hunt_credential_popup_enabled:
+            return None
+
         session.emit({
             "type": "credentials_required",
             "site_key": site_key,
