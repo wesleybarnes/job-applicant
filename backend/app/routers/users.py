@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from typing import Optional
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app import models, schemas
@@ -7,6 +8,62 @@ from app.auth import get_clerk_user_id, get_current_user
 from app.config import settings, FREE_CREDITS_ON_SIGNUP
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+class GoalsRequest(BaseModel):
+    goals: Optional[str] = None      # free-form goals / survey answers, joined
+    survey: Optional[dict] = None    # optional structured survey {question: answer}
+    regenerate: bool = True          # regenerate the AI summary from goals
+
+
+async def _generate_goal_summary(user: models.UserProfile, survey: Optional[dict]) -> str:
+    """Use the configured model to distill goals + profile into a tight summary."""
+    survey_text = ""
+    if survey:
+        survey_text = "\n".join(f"- {q}: {a}" for q, a in survey.items() if a)
+    prompt = f"""Write a concise job-search goal summary (2-4 sentences, first person) for this candidate.
+It will steer which job sites to search and how jobs are scored, so be specific about role, level, location/relocation, and any deal-breakers.
+
+Roles: {', '.join(user.target_roles or []) or 'open'}
+Target locations: {', '.join(user.target_locations or []) or 'flexible'}
+Willing to relocate: {user.willing_to_relocate}
+Remote preference: {user.remote_preference or 'any'}
+Skills: {', '.join(user.skills or [])}
+Existing summary: {user.summary or 'N/A'}
+Stated goals: {user.goals or 'N/A'}
+Survey answers:
+{survey_text or 'N/A'}
+
+Return only the summary text, no preamble."""
+    try:
+        import anthropic
+        client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        resp = await client.messages.create(
+            model=settings.agent_model,
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
+        return text or (user.goals or "")
+    except Exception:
+        # Never block goal-setting on the LLM — fall back to the raw goals text
+        return user.goals or ""
+
+
+@router.post("/me/goals", response_model=schemas.UserProfileResponse)
+async def set_goals(
+    body: GoalsRequest,
+    user: models.UserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Save free-form goals and (re)generate the editable AI goal summary."""
+    if body.goals is not None:
+        user.goals = body.goals
+    if body.regenerate:
+        user.goal_summary = await _generate_goal_summary(user, body.survey)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.get("/me", response_model=schemas.UserProfileResponse)

@@ -28,6 +28,8 @@ class UserProfileCreate(BaseModel):
     availability: Optional[str] = None
     custom_answers: Optional[dict] = {}
     auto_apply: Optional[bool] = False
+    goals: Optional[str] = None          # free-form goals from the pre-hunt survey
+    goal_summary: Optional[str] = None   # AI-generated, user-editable summary
 
 
 class UserProfileUpdate(UserProfileCreate):

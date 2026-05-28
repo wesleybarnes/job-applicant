@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     clerk_publishable_key: str = ""
     admin_email: str = ""
 
+    # Symmetric secret used to encrypt saved site passwords at rest (any string;
+    # a Fernet key is derived from it). If unset, passwords are NOT persisted —
+    # only session cookies are cached. Set this in Railway to enable "save password".
+    credentials_secret_key: str = ""
+
     # Stripe
     stripe_secret_key: str = ""
     stripe_webhook_secret: str = ""
