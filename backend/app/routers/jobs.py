@@ -1,12 +1,65 @@
+import json
+import re as _re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.database import get_db
 from app import models, schemas
 from app.auth import get_current_user
+from app.config import settings
 from app.services.job_scraper import search_jobs_api
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+async def _score_jobs_against_goal(user: models.UserProfile, jobs: list[models.Job]) -> None:
+    """Batch-score unscored Job rows 0-100 against the user's goal_summary (Haiku,
+    profile + goal prompt-cached). Sets job.match_score in place; never raises."""
+    if not jobs or not user.goal_summary:
+        return
+    import anthropic
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    profile = (
+        f"Goal: {user.goal_summary}\n"
+        f"Target roles: {', '.join(user.target_roles or []) or 'open'}\n"
+        f"Target locations: {', '.join(user.target_locations or []) or 'flexible'}\n"
+        f"Skills: {', '.join(user.skills or [])}"
+    )
+    # Process in batches of 15 to keep responses well within max_tokens
+    for start in range(0, len(jobs), 15):
+        batch = jobs[start:start + 15]
+        listing = "\n".join(
+            f"{i+1}. {j.title} at {j.company} ({j.location or ''}): {(j.description or '')[:240]}"
+            for i, j in enumerate(batch)
+        )
+        try:
+            resp = await client.messages.create(
+                model=settings.scoring_model,
+                max_tokens=600,
+                system=[{
+                    "type": "text",
+                    "text": 'You are a job matching assistant. Score each job 0-100 against the candidate goal. Reply ONLY with JSON array: [{"index":1,"score":85},...]',
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"Candidate profile:\n{profile}", "cache_control": {"type": "ephemeral"}},
+                        {"type": "text", "text": f"Score these jobs:\n{listing}"},
+                    ],
+                }],
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+            )
+            text = resp.content[0].text.strip()
+            m = _re.search(r"\[.*\]", text, _re.DOTALL)
+            if not m:
+                continue
+            for item in json.loads(m.group()):
+                idx = item.get("index", 0) - 1
+                if 0 <= idx < len(batch):
+                    batch[idx].match_score = item.get("score")
+        except Exception:
+            continue
 
 
 @router.post("/", response_model=schemas.JobResponse)
@@ -124,4 +177,17 @@ async def discover_jobs(
     db.commit()
     for j in all_jobs:
         db.refresh(j)
+
+    # Goal-based filtering: if the user has a goal summary, score any unscored
+    # jobs against it and only return matches ≥ 70.
+    if current_user.goal_summary:
+        to_score = [j for j in all_jobs if j.match_score is None]
+        if to_score:
+            await _score_jobs_against_goal(current_user, to_score)
+            db.commit()
+            for j in to_score:
+                db.refresh(j)
+        all_jobs = [j for j in all_jobs if (j.match_score or 0) >= 70]
+        all_jobs.sort(key=lambda j: (j.match_score or 0), reverse=True)
+
     return all_jobs
