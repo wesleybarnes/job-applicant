@@ -150,7 +150,7 @@ export default function HuntView({ huntId, onClose }) {
   }
 
   const handleScreenClick = useCallback(async (e) => {
-    if (status !== 'paused' || interactMode !== 'click') return
+    if (status !== 'paused') return
     const coords = clientToViewport(e.clientX, e.clientY, imgRef.current)
     if (!coords) return; e.preventDefault(); setIsInteracting(true); setTimeout(() => setIsInteracting(false), 120)
     hiddenKeyInputRef.current?.focus()
@@ -158,14 +158,14 @@ export default function HuntView({ huntId, onClose }) {
   }, [status, interactMode, huntId])
 
   const handleScreenScroll = useCallback(async (e) => {
-    if (status !== 'paused' || interactMode !== 'click') return
+    if (status !== 'paused') return
     const coords = clientToViewport(e.clientX, e.clientY, imgRef.current)
     if (!coords) return; e.preventDefault()
     try { await interactWithHunt(huntId, { type: 'scroll', x: coords.x, y: coords.y, delta_y: e.deltaY }) } catch {}
   }, [status, interactMode, huntId])
 
   const handleKeyInput = useCallback(async (e) => {
-    if (status !== 'paused' || interactMode !== 'click') return
+    if (status !== 'paused') return
     const specialKeys = ['Enter', 'Backspace', 'Delete', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown']
     if (specialKeys.includes(e.key)) { e.preventDefault(); try { await interactWithHunt(huntId, { type: 'key', key: e.key }) } catch {} }
   }, [status, interactMode, huntId])
@@ -201,14 +201,9 @@ export default function HuntView({ huntId, onClose }) {
             {statusCfg.spin && <Loader2 className="w-3.5 h-3.5 animate-spin" />} {statusCfg.label}
           </div>
           {isPaused && (
-            <div className="flex items-center gap-0.5 text-xs bg-white/8 rounded-xl overflow-hidden border border-white/10">
-              <button onClick={() => { setInteractMode('click'); setTimeout(() => hiddenKeyInputRef.current?.focus(), 50) }} className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${interactMode === 'click' ? 'bg-brand-500 text-white' : 'text-zinc-400 hover:text-white'}`}>
-                <MousePointer className="w-3 h-3" /> Click
-              </button>
-              <button onClick={() => { setInteractMode('prompt'); setTimeout(() => instructionRef.current?.focus(), 50) }} className={`flex items-center gap-1.5 px-3 py-1.5 font-semibold transition-colors ${interactMode === 'prompt' ? 'bg-brand-500 text-white' : 'text-zinc-400 hover:text-white'}`}>
-                <MessageSquare className="w-3 h-3" /> Prompt
-              </button>
-            </div>
+            <span className="flex items-center gap-1.5 text-xs text-zinc-400 px-2 py-1 rounded-md bg-white/[0.04] border border-white/[0.08]">
+              <MousePointer className="w-3 h-3 text-amber-300" /> Click on the screen to drive · use Chat for AI
+            </span>
           )}
         </div>
         <div className="flex items-center gap-3">
@@ -227,6 +222,7 @@ export default function HuntView({ huntId, onClose }) {
             </span>
           </div>
           {status === 'running' && <button onClick={handlePause} className="flex items-center gap-1.5 bg-white/8 hover:bg-white/12 text-amber-400 px-3 py-1.5 rounded-xl font-semibold text-sm border border-white/10 transition-colors"><Pause className="w-3.5 h-3.5" /> Pause</button>}
+          {isPaused && <button onClick={handleResume} className="flex items-center gap-1.5 bg-brand-500 hover:bg-brand-400 text-white px-4 py-1.5 rounded-xl font-semibold text-sm transition-colors"><Play className="w-3.5 h-3.5" /> Resume</button>}
           {isActive && <button onClick={handleStop} className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white px-4 py-1.5 rounded-xl font-semibold text-sm transition-colors"><Square className="w-3.5 h-3.5" /> Stop</button>}
           {!isActive && <button onClick={onClose} className="text-zinc-400 hover:text-white text-sm px-4 py-1.5 rounded-xl hover:bg-white/10 transition-colors">Close</button>}
         </div>
@@ -237,7 +233,7 @@ export default function HuntView({ huntId, onClose }) {
         <div className="flex-1 bg-black flex flex-col relative overflow-hidden">
           <div className="flex-1 flex items-center justify-center relative">
             <img ref={imgRef} alt="Browser" className="max-w-full max-h-full object-contain select-none"
-              style={{ display: 'block', cursor: isPaused && interactMode === 'click' ? 'crosshair' : 'default', outline: isPaused ? `2px solid ${isInteracting ? '#06B6D4' : 'rgba(6,182,212,0.3)'}` : 'none', outlineOffset: '-2px', transition: 'outline-color 0.1s' }}
+              style={{ display: 'block', cursor: isPaused ? 'crosshair' : 'default', outline: isPaused ? `2px solid ${isInteracting ? '#06B6D4' : 'rgba(6,182,212,0.3)'}` : 'none', outlineOffset: '-2px', transition: 'outline-color 0.1s' }}
               onClick={handleScreenClick} onWheel={handleScreenScroll} />
             <input ref={hiddenKeyInputRef} style={{ position: 'absolute', opacity: 0, pointerEvents: 'none', width: 1, height: 1, top: 0, left: 0 }} onKeyDown={handleKeyInput} onChange={handleHiddenInputChange} tabIndex={-1} aria-hidden="true" />
 
@@ -247,17 +243,36 @@ export default function HuntView({ huntId, onClose }) {
               </div>
             )}
 
-            {isPaused && interactMode === 'click' && (
+            {isPaused && (
               <div className="absolute top-3 left-1/2 -translate-x-1/2 pointer-events-none">
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-pill text-xs font-semibold glass-dark border border-white/10" style={{ color: '#22D3EE' }}>
-                  <MousePointer className="w-3 h-3" /> Click anywhere · Scroll · Type · Switch to Prompt for AI
+                  <MousePointer className="w-3 h-3" /> Click & scroll to drive · Resume to hand back · Chat for AI
                 </div>
               </div>
             )}
 
             {!imgRef.current?.src && (
-              <div className="absolute inset-0 flex items-center justify-center text-center pointer-events-none">
-                <div><Crosshair className="w-20 h-20 text-brand-900 mx-auto mb-4" /><p className="text-brand-400 text-sm">Starting hunt...</p><p className="text-brand-800 text-xs mt-1">Opening browser</p></div>
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ background: '#0A0A0A' }}>
+                <div className="flex flex-col items-center gap-5">
+                  {/* Skeleton browser frame — feels like something is loading, not nothing */}
+                  <div className="rounded-xl border overflow-hidden" style={{ background: '#161616', borderColor: 'rgba(255,255,255,0.08)', width: 360, height: 230 }}>
+                    <div className="px-3 py-2 flex items-center gap-1.5 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                      <span className="w-2 h-2 rounded-full" style={{ background: '#FF5F57' }} />
+                      <span className="w-2 h-2 rounded-full" style={{ background: '#FEBC2E' }} />
+                      <span className="w-2 h-2 rounded-full" style={{ background: '#28C840' }} />
+                      <div className="flex-1 mx-3 h-3 rounded" style={{ background: 'rgba(255,255,255,0.06)' }} />
+                    </div>
+                    <div className="p-4 space-y-2.5">
+                      {[0.9, 0.7, 0.85, 0.55, 0.75].map((w, i) => (
+                        <div key={i} className="h-2.5 rounded animate-pulse" style={{ background: 'rgba(255,255,255,0.04)', width: `${w * 100}%`, animationDelay: `${i * 0.12}s` }} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 text-[12.5px] text-ink-tertiary">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400" />
+                    Booting the browser & starting your hunt…
+                  </div>
+                </div>
               </div>
             )}
 
@@ -275,29 +290,13 @@ export default function HuntView({ huntId, onClose }) {
           </div>
 
           {isPaused && (
-            <div className="flex-shrink-0 px-4 py-3 flex items-center gap-3 border-t border-white/10 glass-dark">
+            <div className="flex-shrink-0 px-4 py-2.5 flex items-center gap-3 border-t border-white/10 glass-dark text-xs">
               <div className="flex items-center gap-2 flex-shrink-0">
                 <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                <span className="text-amber-400 text-xs font-bold uppercase tracking-wide">Paused</span>
+                <span className="text-amber-400 font-bold uppercase tracking-wide">Paused — you have control</span>
               </div>
-              <span className="text-white/20 text-xs">|</span>
-              {interactMode === 'click'
-                ? <span className="text-white/40 text-xs">Click on screen · Type to fill fields · Switch to Prompt for AI</span>
-                : <span className="text-white/40 text-xs">Give the AI instructions · Switch to Click for direct control</span>
-              }
-              <div className="flex-1" />
-              <div className="flex items-center gap-2 flex-shrink-0" style={{ minWidth: 340 }}>
-                <textarea ref={instructionRef} value={instruction} onChange={e => setInstruction(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (instruction.trim()) handleResume() } }}
-                  onFocus={() => setInteractMode('prompt')}
-                  placeholder="Give the AI instructions (Enter to send)..."
-                  rows={1} className="flex-1 rounded-xl px-3 py-2 text-sm resize-none outline-none"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', caretColor: '#fff', minHeight: 36, maxHeight: 80 }} />
-                <button onClick={handleResume} className="flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm transition-all flex-shrink-0"
-                  style={{ background: instruction.trim() ? 'linear-gradient(135deg, #06B6D4, #0891B2)' : 'rgba(255,255,255,0.08)', color: instruction.trim() ? '#fff' : 'rgba(255,255,255,0.3)', boxShadow: instruction.trim() ? '0 2px 8px rgba(6,182,212,0.3)' : 'none' }}>
-                  {instruction.trim() ? <><Send className="w-3.5 h-3.5" /> Send</> : <><Play className="w-3.5 h-3.5" /> Resume</>}
-                </button>
-              </div>
+              <span className="text-white/20">|</span>
+              <span className="text-white/50">Click & scroll on the screen to drive. For AI instructions, use the Chat tab.</span>
             </div>
           )}
         </div>

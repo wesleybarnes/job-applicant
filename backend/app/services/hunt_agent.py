@@ -324,6 +324,57 @@ class HybridHuntAgent:
             # Raise the bar so we don't prompt again until the next chunk is spent
             session.cost_next_prompt_at = session.cost_usd + ceiling_chunk
 
+    async def _check_hard_requirements(self, user: dict, job: dict, page_text: str, session: 'HuntSession') -> list[str]:
+        """Use Haiku to identify concrete deal-breakers in the full job description
+        that the candidate's profile doesn't claim to satisfy. Returns a short list
+        of clear blockers (e.g., 'JLPT N1 / native Japanese — your profile doesn't
+        claim that level'), or [] if the profile clears them. Cost is one cheap
+        Haiku call per applied-to job — tracked through the existing cost helper."""
+        profile = (
+            f"Skills: {', '.join(user.get('skills') or []) or '—'}\n"
+            f"Years experience: {user.get('years_experience') or '—'}\n"
+            f"Education: {user.get('education_level') or '—'}\n"
+            f"Work authorization: {user.get('work_authorization') or '—'}\n"
+            f"Languages / fluency notes: {user.get('summary') or '—'}\n"
+            f"Pre-written answers: {user.get('custom_answers') or {}}"
+        )
+        try:
+            resp = await self.client.messages.create(
+                model=settings.scoring_model,
+                max_tokens=400,
+                system=[{
+                    "type": "text",
+                    "text": (
+                        "You read a job description and identify CONCRETE hard "
+                        "requirements the candidate has NOT demonstrated. Examples: "
+                        "'JLPT N1 / native Japanese', 'US Top Secret clearance', "
+                        "'PhD required (candidate has Master\\'s)', '8+ years in K8s "
+                        "(candidate has 2)'. Skip soft preferences. Skip anything the "
+                        "profile already covers. Reply ONLY as JSON: "
+                        '{"blockers": ["...", "..."]} — empty array if none.'
+                    ),
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": f"Candidate profile:\n{profile}", "cache_control": {"type": "ephemeral"}},
+                        {"type": "text", "text": f"Job description (full):\n{page_text}"},
+                    ],
+                }],
+                extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
+            )
+            await self._track_cost(session, settings.scoring_model, resp)
+            text = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
+            m = re.search(r"\{.*\}", text, re.DOTALL)
+            if not m:
+                return []
+            data = json.loads(m.group())
+            blockers = data.get("blockers") or []
+            return [str(b)[:200] for b in blockers if b][:6]
+        except Exception:
+            return []
+
     async def _process_chat(self, session: 'HuntSession', context: Optional[dict] = None) -> None:
         """Drain any user chat messages and acknowledge with a brief Haiku reply.
 
@@ -1264,10 +1315,45 @@ Pre-written answers: {custom}""".strip()
         await self._pause(0.2)
 
     async def _smooth_scroll(self, page, amount: int, steps: int = 4):
-        """Scroll gradually for visible effect."""
+        """Scroll gradually. If a modal/dialog (LinkedIn Easy Apply, etc.) is
+        open, scroll INSIDE it — otherwise we'd be scrolling the locked page
+        underneath, which makes the agent look like it's flailing outside the
+        popup the user can clearly see is the active surface.
+        """
         step_amount = amount // steps
+        # Detect a visible dialog/modal; if found, scroll its scrollable interior.
+        target = None
+        try:
+            for sel in [
+                '[role="dialog"]', '.artdeco-modal',
+                '.jobs-easy-apply-modal', '[class*="modal"][class*="content"]',
+            ]:
+                loc = page.locator(sel).first
+                if await loc.count() > 0 and await loc.is_visible():
+                    target = loc
+                    break
+        except Exception:
+            target = None
         for _ in range(steps):
-            await page.evaluate(f"window.scrollBy(0, {step_amount})")
+            try:
+                if target is not None:
+                    # Walk up to the nearest scrollable ancestor inside the modal.
+                    await target.evaluate(
+                        "(el, dy) => {"
+                        " let n = el;"
+                        " while (n && n !== document.body) {"
+                        "   const s = getComputedStyle(n);"
+                        "   if (/(auto|scroll)/.test(s.overflowY) && n.scrollHeight > n.clientHeight) { n.scrollBy(0, dy); return; }"
+                        "   n = n.parentElement;"
+                        " }"
+                        " window.scrollBy(0, dy);"
+                        "}",
+                        step_amount,
+                    )
+                else:
+                    await page.evaluate(f"window.scrollBy(0, {step_amount})")
+            except Exception:
+                await page.evaluate(f"window.scrollBy(0, {step_amount})")
             await self._pause(0.15)
 
     # ── Opus-powered form filling ────────────────────────────────────────
@@ -2058,6 +2144,46 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         await page.evaluate("window.scrollTo(0, 0)")
                         await self._pause(0.5)
 
+                        # Deep-read the full description and check for HARD requirements
+                        # the user hasn't demonstrated (N1 Japanese, security clearance,
+                        # specific certifications, etc.). The scoring step only sees a
+                        # 300-char snippet — this is where we catch deal-breakers.
+                        try:
+                            full_desc = (await page.inner_text("body"))[:6000]
+                        except Exception:
+                            full_desc = ""
+                        if full_desc:
+                            blockers = await self._check_hard_requirements(user, job, full_desc, session)
+                            if blockers and not session._stopped:
+                                blk_list = "\n".join(f"• {b}" for b in blockers[:6])
+                                ans = await self._ask_question(
+                                    session,
+                                    (
+                                        f"Reading the full description for {job_title} at {company} I see "
+                                        f"some hard requirements you may not meet:\n{blk_list}\n\n"
+                                        "Apply anyway, skip, or tell me what I'm missing about you?"
+                                    ),
+                                    options=["Apply anyway", "Skip"],
+                                )
+                                low = (ans or "").lower()
+                                if session._stopped or low.startswith("skip"):
+                                    session.emit({"type": "thinking", "message": f"Skipping {job_title} — not worth applying without those."})
+                                    _persist_decision(session, {
+                                        "type": "job_decision", "decision": "skip",
+                                        "title": job_title, "company": company,
+                                        "url": job_url, "match_score": score,
+                                        "reason": "User skipped after hard-requirement check",
+                                    }, db_session_factory)
+                                    continue
+                                elif not low.startswith("apply"):
+                                    # User gave us new context — splice into custom_answers
+                                    extras = dict(user.get('custom_answers') or {})
+                                    for b in blockers[:6]:
+                                        extras[str(b)[:120]] = ans
+                                    extras["additional context from user"] = ans
+                                    user['custom_answers'] = extras
+                                    session.emit({"type": "thinking", "message": "Thanks — I'll factor that into the cover letter and form answers."})
+
                         # Find and click Apply — try multiple strategies
                         apply_clicked = False
                         # Strategy 1: Easy Apply / direct Apply button
@@ -2145,23 +2271,27 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         # ── Submit ───────────────────────────────────────
                         submitted = await self._submit_application(page, session)
 
-                        # If we couldn't submit AND the form-fill flagged concerns
-                        # (missing dropdown values, unknown required fields, etc.),
-                        # ask the user for the answers and retry the fill+submit
-                        # ONCE. This rescues the common "stuck on the Japanese-level
-                        # dropdown" failure mode instead of silently giving up.
-                        if (not submitted) and concerns and not session._stopped:
-                            concern_list = "\n".join(f"• {c}" for c in concerns[:8])
-                            ans = await self._ask_question(
-                                session,
-                                (
+                        # Form clarification — fires on ANY submit failure (not only
+                        # when concerns is non-empty). Most "stuck on the Japanese-
+                        # level dropdown" failures don't surface as concerns; they
+                        # just leave the form unable to advance past Next/Review.
+                        if (not submitted) and not session._stopped:
+                            if concerns:
+                                concern_list = "\n".join(f"• {c}" for c in concerns[:8])
+                                msg = (
                                     f"This form has fields I couldn't fill from your profile:\n{concern_list}\n\n"
                                     "Type your answers in one message — be as natural as you want "
                                     "(e.g., 'Business level Japanese, 5 years NLP, willing to start in 2 weeks'). "
                                     "I'll plug them in and try again."
-                                ),
-                                options=["Skip this one"],
-                            )
+                                )
+                            else:
+                                msg = (
+                                    "I couldn't get this form across the finish line — there's likely a required "
+                                    "field that wasn't in your profile (language fluency, years in a specific tool, "
+                                    "visa status, etc.). Tell me anything you think the form might be asking for "
+                                    "and I'll retry. Or click Skip."
+                                )
+                            ans = await self._ask_question(session, msg, options=["Skip this one"])
                             if ans and not ans.lower().startswith("skip") and not session._stopped:
                                 # Splice the user's answers into custom_answers for THIS session
                                 # so Opus can use them on the retry. Key: the concern text itself.
@@ -2192,6 +2322,16 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             _persist_stats(session, db_session_factory)
                         else:
                             session.emit({"type": "action", "message": f"Could not complete submission for {job_title}"})
+                            # Persist as 'skip' so cross-hunt memory doesn't retry
+                            # this same broken job (it would just fail again the
+                            # same way next time). User can Resurface from the
+                            # history detail view if they want to retry manually.
+                            _persist_decision(session, {
+                                "type": "job_decision", "decision": "skip",
+                                "title": job_title, "company": company,
+                                "url": job_url, "match_score": score,
+                                "reason": "Apply failed — couldn't complete the form",
+                            }, db_session_factory)
 
                         await self._pause(1)
 
