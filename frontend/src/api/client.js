@@ -87,4 +87,8 @@ export const submitHuntCredentials = (id, body) => api.post(`/hunt/credentials/$
 // ─── Goals ──────────────────────────────────────────────────────────────────
 export const setUserGoals = (body) => api.post('/users/me/goals', body).then(r => r.data)
 
+// ─── Beta allowlist + feedback ──────────────────────────────────────────────
+export const checkAllowlist = (email) => api.get('/admin/allowlist/check', { params: { email } }).then(r => r.data)
+export const submitFeedback = (body) => api.post('/feedback/', body).then(r => r.data)
+
 export default api

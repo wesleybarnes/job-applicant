@@ -1,6 +1,6 @@
-import React, { useState } from 'react'
-import { ChevronRight, ChevronLeft, Check, Upload, X, Sparkles, Crosshair, Monitor, Shield } from 'lucide-react'
-import { onboardMe, uploadResume } from '../api/client'
+import React, { useState, useEffect } from 'react'
+import { ChevronRight, ChevronLeft, Check, Upload, X, Sparkles, Crosshair, Monitor, Shield, Lock, Mail } from 'lucide-react'
+import { onboardMe, uploadResume, checkAllowlist } from '../api/client'
 
 const STEPS = [
   { id: 1, title: 'Basic Info', desc: 'Your contact details', icon: '01' },
@@ -20,6 +20,16 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
   const [error, setError] = useState(null)
   const [resumeFile, setResumeFile] = useState(null)
   const [dragOver, setDragOver] = useState(false)
+  // Closed-beta gate — pre-check the signed-in user's email so we don't make
+  // them fill out the whole form just to be rejected at submit time.
+  const [betaState, setBetaState] = useState({ checking: true, allowed: true, invite_only: false })
+  const clerkEmail = clerkUser?.primaryEmailAddress?.emailAddress || ''
+  useEffect(() => {
+    if (!clerkEmail) return
+    checkAllowlist(clerkEmail)
+      .then(r => setBetaState({ checking: false, allowed: !!r.allowed, invite_only: !!r.invite_only }))
+      .catch(() => setBetaState({ checking: false, allowed: true, invite_only: false })) // never block on a bad probe
+  }, [clerkEmail])
   const [form, setForm] = useState({
     full_name: clerkUser?.fullName || '', email: clerkUser?.primaryEmailAddress?.emailAddress || '',
     phone: '', location: '', linkedin_url: '', github_url: '', portfolio_url: '',
@@ -65,6 +75,28 @@ export default function OnboardingPage({ clerkUser, onComplete }) {
     finally { setLoading(false) }
   }
   const canProceed = () => step === 1 ? (form.full_name && form.email) : true
+
+  // ── Closed-beta lockout screen ────────────────────────────────────────
+  if (!betaState.checking && betaState.invite_only && !betaState.allowed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#111111' }}>
+        <div className="max-w-md mx-auto p-10 text-center">
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-5" style={{ background: 'rgba(94,106,210,0.12)' }}>
+            <Lock className="w-5 h-5 text-brand-400" />
+          </div>
+          <h1 className="text-[22px] font-medium text-ink-primary tracking-tight mb-2">Envia is in closed beta</h1>
+          <p className="text-[13px] text-ink-tertiary leading-relaxed mb-6">
+            Thanks for signing up. We're letting people in slowly while we polish the product.
+            <br/>Your account <span className="text-ink-secondary">({clerkEmail})</span> isn't on the invite list yet.
+          </p>
+          <a href="mailto:wesdrew01@gmail.com?subject=Envia%20beta%20access" className="btn-primary text-[13px] inline-flex items-center gap-1.5">
+            <Mail className="w-3.5 h-3.5" /> Request access
+          </a>
+          <p className="text-[11px] text-ink-tertiary mt-6">If you were invited under a different email, sign out and try again.</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex" style={{ background: '#111111' }}>

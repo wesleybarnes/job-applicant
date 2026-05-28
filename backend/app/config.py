@@ -37,6 +37,22 @@ class Settings(BaseSettings):
     # only session cookies are cached. Set this in Railway to enable "save password".
     credentials_secret_key: str = ""
 
+    # ── Closed-beta gate ───────────────────────────────────────────────
+    # When True, only emails in the allowlist_emails table can complete onboarding.
+    # The admin email (ADMIN_EMAIL) is auto-allowlisted on startup.
+    invite_only: bool = True
+
+    # ── Outbound email (for the daily feedback digest) ─────────────────
+    # SMTP via stdlib smtplib. Easiest setup: Gmail + an App Password.
+    # If smtp_host is empty the digest is logged but not sent.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""               # "Envia Feedback <you@gmail.com>"
+    feedback_digest_to: str = ""      # admin recipient; falls back to admin_email
+    feedback_digest_hour_utc: int = 14  # 24h clock; 14 UTC ≈ 7am PT / 10am ET
+
     # Master switch for the per-site credential popup. Now on by default — the
     # frontend renders the credentials_required event as a popup in HuntView.
     # Set to False to disable prompting (saved-credential reuse still works).
