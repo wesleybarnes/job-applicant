@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, Play, Monitor, Upload, Shield, Crosshair, Sparkles, Check, ChevronRight } from 'lucide-react'
+import { ArrowRight, Play, Monitor, Upload, Shield, Crosshair, Sparkles, Check, ChevronRight, Lock, X, Loader2 } from 'lucide-react'
+import { requestBetaAccess } from '../api/client'
 
 /* ─── Animated grid background ────────────────────────────────────────── */
 function GridBg() {
@@ -60,8 +61,62 @@ function ProductMockup() {
   )
 }
 
+function BetaModal({ onClose }) {
+  const [form, setForm] = useState({ email: '', name: '', why: '' })
+  const [busy, setBusy] = useState(false)
+  const [done, setDone] = useState(null)   // null | "queued" | "already_allowed" | "error"
+  const submit = async () => {
+    if (!form.email.trim() || busy) return
+    setBusy(true)
+    try {
+      const r = await requestBetaAccess(form)
+      setDone(r.already_allowed ? "already_allowed" : "queued")
+    } catch { setDone("error") }
+    finally { setBusy(false) }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.65)' }}>
+      <div className="w-full max-w-md rounded-2xl border overflow-hidden" style={{ background: '#0C1220', borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2"><Lock className="w-4 h-4 text-brand-400" /><p className="text-[13px] font-medium text-white">Request beta access</p></div>
+          <button onClick={onClose} className="p-1 rounded text-ink-tertiary hover:text-white hover:bg-white/[0.05]"><X className="w-4 h-4" /></button>
+        </div>
+        {done === "queued" ? (
+          <div className="p-7 text-center">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: 'rgba(16,185,129,0.15)' }}><Check className="w-5 h-5 text-emerald-400" /></div>
+            <p className="text-[13px] text-ink-primary">Got it — we'll be in touch.</p>
+            <p className="text-[11.5px] text-ink-tertiary mt-1">You'll get an email once you're added to the list.</p>
+          </div>
+        ) : done === "already_allowed" ? (
+          <div className="p-7 text-center">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3" style={{ background: 'rgba(94,106,210,0.15)' }}><Check className="w-5 h-5 text-brand-400" /></div>
+            <p className="text-[13px] text-ink-primary">You're already on the list — just sign up.</p>
+          </div>
+        ) : (
+          <div className="p-5 space-y-3">
+            <p className="text-[12px] text-ink-tertiary leading-relaxed">Envia is in closed beta. Drop your email and we'll add you when there's room.</p>
+            <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} type="email" placeholder="your@email.com" autoFocus
+              className="w-full rounded-lg px-3 py-2 text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', caretColor: '#fff' }} />
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Name (optional)"
+              className="w-full rounded-lg px-3 py-2 text-[13px] outline-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', caretColor: '#fff' }} />
+            <textarea value={form.why} onChange={e => setForm(f => ({ ...f, why: e.target.value }))} rows={3} placeholder="What kind of roles are you hunting? (optional)"
+              className="w-full rounded-lg px-3 py-2 text-[13px] outline-none resize-none" style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', caretColor: '#fff' }} />
+            {done === "error" && <p className="text-[11.5px] text-red-400">Something went wrong — try again?</p>}
+            <button onClick={submit} disabled={!form.email.trim() || busy}
+              className="btn-primary w-full py-2.5 text-[13px] disabled:opacity-40 flex items-center justify-center gap-2">
+              {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ArrowRight className="w-3.5 h-3.5" />}
+              {busy ? 'Sending…' : 'Request access'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function LandingPage() {
   const navigate = useNavigate()
+  const [showBeta, setShowBeta] = useState(false)
 
   return (
     <div className="min-h-screen" style={{ background: '#111111' }}>
@@ -76,7 +131,7 @@ export default function LandingPage() {
           </div>
           <div className="flex items-center gap-4">
             <button onClick={() => navigate('/sign-in')} className="text-[13px] text-ink-secondary hover:text-ink-primary transition-colors">Log in</button>
-            <button onClick={() => navigate('/sign-up')} className="btn-primary text-[13px]">Sign up free</button>
+            <button onClick={() => setShowBeta(true)} className="btn-primary text-[13px]">Request access</button>
           </div>
         </div>
       </nav>
@@ -101,8 +156,8 @@ export default function LandingPage() {
               </p>
 
               <div className="flex items-center gap-3 mb-4">
-                <button onClick={() => navigate('/sign-up')} className="btn-primary px-5 py-2.5 text-[13px]">
-                  Get started free <ArrowRight className="w-3.5 h-3.5" />
+                <button onClick={() => setShowBeta(true)} className="btn-primary px-5 py-2.5 text-[13px]">
+                  Request beta access <ArrowRight className="w-3.5 h-3.5" />
                 </button>
                 <button onClick={() => navigate('/sign-in')} className="btn-secondary px-5 py-2.5 text-[13px]">
                   <Play className="w-3 h-3" /> See it work
@@ -192,8 +247,8 @@ export default function LandingPage() {
         <div className="max-w-lg mx-auto px-6 py-28 text-center">
           <h2 className="text-[28px] font-medium text-ink-primary tracking-heading mb-3">Stop applying manually</h2>
           <p className="text-[15px] text-ink-tertiary mb-8 leading-relaxed">Every minute you spend on job forms is a minute you're not preparing for interviews.</p>
-          <button onClick={() => navigate('/sign-up')} className="btn-primary px-6 py-2.5 text-[13px]">
-            Get started free <ArrowRight className="w-3.5 h-3.5" />
+          <button onClick={() => setShowBeta(true)} className="btn-primary px-6 py-2.5 text-[13px]">
+            Request beta access <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
@@ -210,6 +265,8 @@ export default function LandingPage() {
           <span className="text-[12px] text-ink-tertiary">&copy; 2026</span>
         </div>
       </div>
+
+      {showBeta && <BetaModal onClose={() => setShowBeta(false)} />}
     </div>
   )
 }

@@ -5,7 +5,7 @@ import os
 
 from app.config import settings
 from app.database import Base, engine
-from app.routers import users, resume, jobs, applications, browser, payments, hunt, admin, feedback
+from app.routers import users, resume, jobs, applications, browser, payments, hunt, admin, feedback, public
 from app import models  # noqa — ensure models are registered before create_all
 
 # Create all DB tables
@@ -64,6 +64,7 @@ app.include_router(payments.router, prefix="/api")
 app.include_router(hunt.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(feedback.router, prefix="/api")
+app.include_router(public.router, prefix="/api")
 
 
 @app.on_event("startup")

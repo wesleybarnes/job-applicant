@@ -87,6 +87,9 @@ export const sendHuntChat = (id, message) => api.post(`/hunt/chat/${id}`, { mess
 export const listMyHuntDecisions = (params) => api.get('/hunt/decisions', { params }).then(r => r.data)
 export const resurfaceHuntDecision = (job_url) => api.post('/hunt/decisions/resurface', { job_url }).then(r => r.data)
 
+// ─── Public (no auth) ─────────────────────────────────────────────────────
+export const requestBetaAccess = (body) => api.post('/public/beta-request', body).then(r => r.data)
+
 // ─── Goals ──────────────────────────────────────────────────────────────────
 export const setUserGoals = (body) => api.post('/users/me/goals', body).then(r => r.data)
 
