@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
-import { Square, CheckCircle, XCircle, Loader2, Crosshair, Brain, ListChecks, Pause, Play, Send, MousePointer, MessageSquare } from 'lucide-react'
+import { Square, CheckCircle, XCircle, Loader2, Crosshair, Brain, ListChecks, Pause, Play, Send, MousePointer, MessageSquare, Lock, Eye, EyeOff } from 'lucide-react'
 import HuntConfirmModal from './HuntConfirmModal'
-import api, { SSE_BASE, interactWithHunt } from '../api/client'
+import api, { SSE_BASE, interactWithHunt, submitHuntCredentials } from '../api/client'
 
 function getImageRenderRect(img) {
   if (!img) return null
@@ -31,6 +31,8 @@ export default function HuntView({ huntId, onClose }) {
   const [confirmData, setConfirmData] = useState(null)
   const [questionData, setQuestionData] = useState(null)
   const [questionAnswer, setQuestionAnswer] = useState('')
+  const [credentialsData, setCredentialsData] = useState(null)   // { site, site_key, login_url, saved_username }
+  const [credForm, setCredForm] = useState({ username: '', password: '', save: true, showPassword: false })
   const [stats, setStats]           = useState({ found: 0, applied: 0 })
   const [finalMessage, setFinalMessage] = useState(null)
   const [tab, setTab]               = useState('decisions')
@@ -75,6 +77,11 @@ export default function HuntView({ huntId, onClose }) {
         setDecisions(prev => [...prev, { ...event, id: Date.now() + Math.random() }])
         if (event.decision === 'apply') setStats(s => ({ ...s, found: s.found + 1 })); break
       case 'question': setQuestionData(event); addLog({ type: 'confirm_required', message: `❓ ${event.message}` }); break
+      case 'credentials_required':
+        setCredentialsData(event)
+        setCredForm({ username: event.saved_username || '', password: '', save: true, showPassword: false })
+        addLog({ type: 'confirm_required', message: `🔒 Sign in to ${event.site} to continue` })
+        break
       case 'confirm_required': setStatus('confirm'); setConfirmData(event); addLog({ type: 'confirm_required', message: `⏸ Review: ${event.job_title} at ${event.company}` }); break
       case 'submitted': setStatus('running'); setConfirmData(null); setStats(s => ({ ...s, applied: event.jobs_applied ?? s.applied + 1 })); addLog({ type: 'submitted', message: event.message }); break
       case 'complete': setStatus('done'); setFinalMessage(event.message || 'Hunt complete!'); if (event.jobs_found !== undefined) setStats({ found: event.jobs_found, applied: event.jobs_applied }); addLog(event); break
@@ -90,6 +97,17 @@ export default function HuntView({ huntId, onClose }) {
   const handlePause   = async () => { setStatus('paused'); await api.post(`/hunt/pause/${huntId}`) }
   const handleResume  = async () => { const inst = instruction.trim(); setInstruction(''); setStatus('running'); await api.post(`/hunt/resume/${huntId}`, { instruction: inst || null }) }
   const handleAnswerQuestion = async (answer) => { const ans = answer || questionAnswer; setQuestionData(null); setQuestionAnswer(''); await api.post(`/hunt/answer/${huntId}`, { answer: ans }) }
+
+  const handleSubmitCredentials = async () => {
+    if (!credForm.username || !credForm.password) return
+    const body = { username: credForm.username, password: credForm.password, save: !!credForm.save }
+    setCredentialsData(null)
+    try { await submitHuntCredentials(huntId, body) } catch {}
+  }
+  const handleSkipCredentials = async () => {
+    setCredentialsData(null)
+    try { await submitHuntCredentials(huntId, { skip: true }) } catch {}
+  }
 
   const handleScreenClick = useCallback(async (e) => {
     if (status !== 'paused' || interactMode !== 'click') return
@@ -288,6 +306,69 @@ export default function HuntView({ huntId, onClose }) {
                   className="flex-1 rounded-xl px-3 py-2 text-sm outline-none" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }} autoFocus />
                 <button onClick={() => handleAnswerQuestion()} disabled={!questionAnswer} className="btn-primary px-4 py-2 text-sm rounded-xl disabled:opacity-40">Send</button>
                 <button onClick={() => handleAnswerQuestion('Use your best judgment')} className="text-xs text-zinc-400 hover:text-zinc-200 px-3 transition-colors">Skip</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {credentialsData && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)' }}>
+          <div className="rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-white/10" style={{ background: '#0C1220' }}>
+            <div className="px-5 py-4 border-b border-white/10 flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-400" />
+              <p className="font-bold text-white text-sm">Sign in to {credentialsData.site}</p>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-zinc-300 text-sm leading-relaxed">
+                {credentialsData.message || `Enter your ${credentialsData.site} credentials so the hunt can continue.`}
+              </p>
+              <input
+                type="email"
+                value={credForm.username}
+                onChange={e => setCredForm(c => ({ ...c, username: e.target.value }))}
+                placeholder={`${credentialsData.site} email or username`}
+                autoFocus
+                className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
+              />
+              <div className="relative">
+                <input
+                  type={credForm.showPassword ? 'text' : 'password'}
+                  value={credForm.password}
+                  onChange={e => setCredForm(c => ({ ...c, password: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter' && credForm.username && credForm.password) handleSubmitCredentials() }}
+                  placeholder="Password"
+                  className="w-full rounded-xl px-3 py-2 pr-9 text-sm outline-none"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
+                />
+                <button type="button" onClick={() => setCredForm(c => ({ ...c, showPassword: !c.showPassword }))}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200">
+                  {credForm.showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={!!credForm.save}
+                  onChange={e => setCredForm(c => ({ ...c, save: e.target.checked }))}
+                  className="accent-brand-500"
+                />
+                Save these credentials (encrypted) so future hunts skip the login
+              </label>
+              <p className="text-[11px] text-zinc-500 leading-snug">
+                Stored Fernet-encrypted on the server; cookies cached so we usually skip the login next time. Tip: you can also click <em>Skip</em> and sign in manually in the browser using Pause → Click.
+              </p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={handleSubmitCredentials}
+                  disabled={!credForm.username || !credForm.password}
+                  className="btn-primary flex-1 py-2 text-sm rounded-xl disabled:opacity-40"
+                >Sign in</button>
+                <button
+                  onClick={handleSkipCredentials}
+                  className="px-3 py-2 text-sm rounded-xl text-zinc-300 hover:text-white hover:bg-white/[0.05]"
+                >Skip this site</button>
               </div>
             </div>
           </div>
