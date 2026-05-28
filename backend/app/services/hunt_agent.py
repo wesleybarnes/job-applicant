@@ -638,14 +638,22 @@ Pre-written answers: {custom}""".strip()
                 )
                 await self._pause(random.uniform(0.1, 0.3))
 
-            await email_input.click()
-            await self._pause(random.uniform(0.2, 0.4))
-
-            # Type email character by character with human-like variable delay
-            for char in email:
-                await page.keyboard.type(char, delay=random.randint(30, 80))
-                if random.random() < 0.05:  # occasional longer pause
-                    await self._pause(random.uniform(0.1, 0.2))
+            # Fast click → character-by-character; if click is rejected (overlay,
+            # actionability hiccup) fall back to .fill() so we don't hang 30s and
+            # the login still attempts.
+            try:
+                await email_input.click(timeout=5000)
+                await self._pause(random.uniform(0.2, 0.4))
+                for char in email:
+                    await page.keyboard.type(char, delay=random.randint(30, 80))
+                    if random.random() < 0.05:
+                        await self._pause(random.uniform(0.1, 0.2))
+            except Exception:
+                session.emit({"type": "action", "message": "Email field uncooperative — filling directly"})
+                try:
+                    await email_input.fill(email, timeout=5000)
+                except Exception:
+                    pass
             await self._pause(random.uniform(0.3, 0.6))
 
             # Tab to password field (more human than clicking)
@@ -672,27 +680,45 @@ Pre-written answers: {custom}""".strip()
                         box['y'] + random.uniform(5, box['height'] - 5),
                         steps=random.randint(8, 12)
                     )
-                await pass_input.click()
-                await self._pause(random.uniform(0.2, 0.4))
+                try:
+                    await pass_input.click(timeout=5000)
+                    await self._pause(random.uniform(0.2, 0.4))
+                except Exception:
+                    pass  # we'll fill() directly below as a fallback
 
-            # Type password character by character
-            for char in password:
-                await page.keyboard.type(char, delay=random.randint(25, 70))
+            # Type password character by character — fall back to .fill() if typing fails
+            try:
+                for char in password:
+                    await page.keyboard.type(char, delay=random.randint(25, 70))
+            except Exception:
+                try:
+                    await pass_input.fill(password, timeout=5000)
+                except Exception:
+                    pass
             await self._pause(random.uniform(0.4, 0.8))
 
-            # Click sign in button (more human than pressing Enter)
+            # Click sign in — fall back to pressing Enter if the button rejects clicks
             submit_btn = page.locator('button[type="submit"], button[data-litms-control-urn*="login-submit"]').first
+            submitted = False
             if await submit_btn.count() > 0:
-                box = await submit_btn.bounding_box()
-                if box:
-                    await page.mouse.move(
-                        box['x'] + random.uniform(10, box['width'] - 10),
-                        box['y'] + random.uniform(5, box['height'] - 5),
-                        steps=random.randint(6, 12)
-                    )
-                    await self._pause(random.uniform(0.1, 0.3))
-                await submit_btn.click()
-            else:
+                try:
+                    box = await submit_btn.bounding_box()
+                    if box:
+                        await page.mouse.move(
+                            box['x'] + random.uniform(10, box['width'] - 10),
+                            box['y'] + random.uniform(5, box['height'] - 5),
+                            steps=random.randint(6, 12)
+                        )
+                        await self._pause(random.uniform(0.1, 0.3))
+                    await submit_btn.click(timeout=6000)
+                    submitted = True
+                except Exception:
+                    try:
+                        await submit_btn.click(timeout=3000, force=True)
+                        submitted = True
+                    except Exception:
+                        pass
+            if not submitted:
                 await page.keyboard.press("Enter")
 
             # Wait for navigation
@@ -928,7 +954,9 @@ Pre-written answers: {custom}""".strip()
         await page.mouse.move(x, y, steps=8)
 
     async def _click_element(self, page, session: HuntSession, element):
-        """Click with visible cursor movement."""
+        """Click with visible cursor movement. Fails fast (8s) and force-clicks on
+        actionability timeouts so a covered/disabled element doesn't hang the run
+        for the 30s Playwright default."""
         try:
             box = await element.bounding_box()
             if box:
@@ -937,11 +965,27 @@ Pre-written answers: {custom}""".strip()
                 await self._move_cursor_to(page, session, cx, cy)
         except Exception:
             pass
-        await element.click()
+        try:
+            await element.click(timeout=8000)
+        except Exception:
+            # Bypass actionability — for overlays, tiny click targets, or elements
+            # that the recv-events check rejects (very common on LinkedIn modals).
+            try:
+                await element.click(timeout=4000, force=True)
+            except Exception as e:
+                session.emit({"type": "action", "message": f"⚠ Click failed: {str(e)[:60]}"})
+                raise
         await self._pause(0.25)
 
     async def _human_type(self, page, element, text: str, session: HuntSession):
-        """Type with human-like character-by-character delay."""
+        """Type with human-like character-by-character delay, with a robust fallback.
+
+        Tries to click the field (5s) then type character-by-character — that's
+        the visible, stealthy path. If actionability times out (LinkedIn covering
+        the input briefly, an iframe quirk, etc.), we fall back to .fill() which
+        skips actionability checks and just sets the value programmatically. Less
+        "human" but the agent never freezes for 30s on a single field.
+        """
         try:
             box = await element.bounding_box()
             if box:
@@ -950,13 +994,24 @@ Pre-written answers: {custom}""".strip()
                 await self._move_cursor_to(page, session, cx, cy)
         except Exception:
             pass
-        await element.click()
-        await self._pause(0.15)
-        # Clear existing value first
-        await element.fill('')
-        # Type with visible delay — faster for long text, scaled by hunt speed
-        delay = int((20 if len(text) < 30 else 8) * self.speed)
-        await element.type(text, delay=delay)
+
+        try:
+            await element.click(timeout=5000)
+            await self._pause(0.15)
+            await element.fill('')                       # clear any existing value
+            delay = int((20 if len(text) < 30 else 8) * self.speed)
+            await element.type(text, delay=delay)
+        except Exception:
+            # Direct fill — bypasses click/actionability entirely.
+            try:
+                await element.fill(text, timeout=5000)
+            except Exception as e:
+                # Last resort: set value via JS so we still try to submit the form.
+                try:
+                    await element.evaluate("(el, v) => { el.focus(); el.value = v; el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); }", text)
+                except Exception:
+                    session.emit({"type": "action", "message": f"⚠ Could not fill field: {str(e)[:60]}"})
+                    raise
         await self._pause(0.2)
 
     async def _smooth_scroll(self, page, amount: int, steps: int = 4):
@@ -1270,7 +1325,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
             cdp.on("Page.screencastFrame", on_frame)
             await cdp.send("Page.startScreencast", {
                 "format": "jpeg",
-                "quality": 50,
+                "quality": 70,           # sharper than 50, still small enough for SSE
                 "maxWidth": 1280,
                 "maxHeight": 900,
                 "everyNthFrame": 1,
@@ -1295,7 +1350,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
             # Fallback: manual screenshot loop if CDP fails
             while not session._stopped:
                 try:
-                    jpg = await page.screenshot(full_page=False, type="jpeg", quality=50)
+                    jpg = await page.screenshot(full_page=False, type="jpeg", quality=70)
                     b64 = base64.b64encode(jpg).decode()
                     meta = {}
                     if session.cursor_x is not None:
@@ -1327,6 +1382,12 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     '--window-size=1280,900',
                     '--disable-extensions',
                     '--disable-infobars',
+                    # Suppress Chromium's password save bubble + autofill prompts.
+                    # Saving is handled server-side (SiteCredential, Fernet-encrypted),
+                    # so we never want the browser's password manager involved.
+                    '--disable-save-password-bubble',
+                    '--disable-features=AutofillServerCommunication,AutofillEnableAccountWalletStorage,PasswordLeakDetection,PasswordCheckup,PasswordManagerOnboarding',
+                    '--password-store=basic',
                     '--disable-background-timer-throttling',
                     '--disable-backgrounding-occluded-windows',
                     '--disable-renderer-backgrounding',
