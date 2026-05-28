@@ -30,6 +30,12 @@ class ResumeRequest(BaseModel):
 class AnswerRequest(BaseModel):
     answer: str
 
+class CredentialsRequest(BaseModel):
+    username: Optional[str] = None
+    password: Optional[str] = None
+    save: bool = False        # store the password encrypted for future hunts
+    skip: bool = False        # decline to log in to this site
+
 class InteractRequest(BaseModel):
     type: str                      # "click" | "type" | "key" | "scroll"
     x: Optional[float] = None     # viewport coords (0-1280)
@@ -213,6 +219,18 @@ async def answer_agent_question(hunt_id: int, body: AnswerRequest):
     return {"status": "answered"}
 
 
+@router.post("/credentials/{hunt_id}")
+async def submit_hunt_credentials(hunt_id: int, body: CredentialsRequest):
+    """Frontend response to a `credentials_required` event — supply the username/password
+    for the site the hunt is currently on, or skip it. Passwords are encrypted at rest
+    (only when CREDENTIALS_SECRET_KEY is set and save=True)."""
+    session = get_hunt_session(hunt_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="No active hunt session")
+    session.submit_credentials(body.model_dump())
+    return {"status": "received"}
+
+
 @router.post("/pause/{hunt_id}")
 async def pause_hunt(hunt_id: int):
     session = get_hunt_session(hunt_id)
@@ -291,3 +309,88 @@ def list_hunt_sessions(
         }
         for s in sessions
     ]
+
+
+@router.get("/sessions/{session_id}")
+def get_hunt_session_detail(
+    session_id: int,
+    current_user: models.UserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Full detail for one past hunt: every job_decision + submitted entry,
+    with title/company/match_score/url so the frontend can render the list
+    and let the user save any of them to their applications."""
+    s = db.query(models.HuntSession).filter(
+        models.HuntSession.id == session_id,
+        models.HuntSession.user_id == current_user.id,
+    ).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Hunt session not found")
+    log = s.log or []
+    return {
+        "id": s.id,
+        "status": s.status,
+        "jobs_found": s.jobs_found,
+        "jobs_applied": s.jobs_applied,
+        "started_at": s.started_at.isoformat() if s.started_at else None,
+        "stopped_at": s.stopped_at.isoformat() if s.stopped_at else None,
+        "decisions": [e for e in log if e.get("type") == "job_decision"],
+        "submitted": [e for e in log if e.get("type") == "submitted"],
+    }
+
+
+class SaveJobRequest(BaseModel):
+    url: str
+    title: Optional[str] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+    match_score: Optional[float] = None
+    reason: Optional[str] = None
+
+
+@router.post("/sessions/{session_id}/save-job")
+def save_job_from_session(
+    session_id: int,
+    body: SaveJobRequest,
+    current_user: models.UserProfile = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Save a job the hunt looked at (from the history view) to the user's
+    applications, so they can apply later. Creates the Job row if needed and
+    a pending Application; idempotent if it already exists."""
+    s = db.query(models.HuntSession).filter(
+        models.HuntSession.id == session_id,
+        models.HuntSession.user_id == current_user.id,
+    ).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Hunt session not found")
+
+    # Find-or-create the Job (dedup on URL)
+    job = db.query(models.Job).filter(models.Job.url == body.url).first()
+    if not job:
+        job = models.Job(
+            title=body.title or "(saved from hunt)",
+            company=body.company or "",
+            location=body.location,
+            url=body.url,
+            source="hunt",
+            external_id=body.url,
+            match_score=body.match_score,
+            match_reasons=[body.reason] if body.reason else None,
+        )
+        db.add(job)
+        db.flush()
+
+    # Idempotent: don't duplicate the application
+    existing = db.query(models.Application).filter(
+        models.Application.user_id == current_user.id,
+        models.Application.job_id == job.id,
+    ).first()
+    if existing:
+        return {"job_id": job.id, "application_id": existing.id, "already_saved": True}
+
+    app = models.Application(user_id=current_user.id, job_id=job.id, status="pending")
+    db.add(app)
+    db.commit()
+    db.refresh(app)
+    return {"job_id": job.id, "application_id": app.id, "already_saved": False}

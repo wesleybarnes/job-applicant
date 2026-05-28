@@ -23,8 +23,9 @@ class Settings(BaseSettings):
 
     # Hunt pacing: multiplier on human-like browser delays. 1.0 = original cadence,
     # lower = faster (and less "watchable"/stealthy). Tune up toward 1.0 if a board
-    # starts throwing CAPTCHAs. Inference latency is cut separately by form_fill_model.
-    hunt_speed_factor: float = 0.4
+    # starts throwing CAPTCHAs. Inference latency (LLM round-trips) is a separate
+    # lower bound set by form_fill_model.
+    hunt_speed_factor: float = 0.2
 
     # Clerk auth
     clerk_secret_key: str = ""

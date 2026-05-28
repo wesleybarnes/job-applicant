@@ -76,6 +76,7 @@ class Job(Base):
     salary_min = Column(Integer)
     salary_max = Column(Integer)
     url = Column(String(1000))
+    logo_url = Column(String(1000))   # company logo (from Remotive/JSearch when available)
     source = Column(String(100))      # linkedin/indeed/manual/etc
     external_id = Column(String(200))
     posted_date = Column(DateTime(timezone=True))
