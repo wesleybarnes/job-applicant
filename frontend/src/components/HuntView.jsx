@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import { Square, CheckCircle, XCircle, Loader2, Crosshair, Brain, ListChecks, Pause, Play, Send, MousePointer, MessageSquare, Lock, Eye, EyeOff } from 'lucide-react'
 import HuntConfirmModal from './HuntConfirmModal'
-import api, { SSE_BASE, interactWithHunt, submitHuntCredentials } from '../api/client'
+import api, { SSE_BASE, interactWithHunt, submitHuntCredentials, sendHuntChat } from '../api/client'
 
 function getImageRenderRect(img) {
   if (!img) return null
@@ -36,7 +36,11 @@ export default function HuntView({ huntId, onClose }) {
   const [stats, setStats]           = useState({ found: 0, applied: 0 })
   const [costUsd, setCostUsd]       = useState(0)
   const [finalMessage, setFinalMessage] = useState(null)
-  const [tab, setTab]               = useState('decisions')
+  const [tab, setTab]               = useState('chat')
+  const [chatMessages, setChatMessages] = useState([])   // [{role, content, ts}]
+  const [chatInput, setChatInput]   = useState('')
+  const [chatBusy, setChatBusy]     = useState(false)
+  const chatScrollRef               = useRef(null)
   const [instruction, setInstruction] = useState('')
   const [interactMode, setInteractMode] = useState('click')
   const [isInteracting, setIsInteracting] = useState(false)
@@ -66,6 +70,20 @@ export default function HuntView({ huntId, onClose }) {
   }, [log, decisions, tab])
   useEffect(() => { if (status === 'paused') { setInteractMode('click'); setTimeout(() => hiddenKeyInputRef.current?.focus(), 50) } }, [status])
 
+  // Auto-scroll the chat panel to the bottom when new messages arrive
+  useEffect(() => {
+    const el = chatScrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [chatMessages, tab])
+
+  const handleSendChat = useCallback(async () => {
+    const text = chatInput.trim()
+    if (!text || chatBusy) return
+    setChatBusy(true); setChatInput('')
+    try { await sendHuntChat(huntId, text) } catch {}
+    finally { setChatBusy(false) }
+  }, [chatInput, chatBusy, huntId])
+
   const handleEvent = useCallback((event) => {
     switch (event.type) {
       case 'connected': setStatus('running'); addLog(event); break
@@ -76,6 +94,9 @@ export default function HuntView({ huntId, onClose }) {
       case 'thinking': addLog({ ...event, type: 'thinking' }); break
       case 'cost_update':
         if (typeof event.cost_usd === 'number') setCostUsd(event.cost_usd)
+        break
+      case 'chat_message':
+        setChatMessages(prev => [...prev, { role: event.role, content: event.content, ts: event.ts, id: Date.now() + Math.random() }])
         break
       case 'job_decision':
         setDecisions(prev => [...prev, { ...event, id: Date.now() + Math.random() }])
@@ -267,14 +288,59 @@ export default function HuntView({ huntId, onClose }) {
         </div>
 
         {/* Right panel */}
-        <div className="w-72 border-l border-white/10 flex flex-col" style={{ background: '#060A14' }}>
+        <div className="w-80 border-l border-white/10 flex flex-col" style={{ background: '#060A14' }}>
           <div className="flex border-b border-white/10">
-            {[{ id: 'decisions', label: 'Decisions', icon: ListChecks }, { id: 'log', label: 'Log', icon: Brain }].map(({ id, label, icon: Icon }) => (
+            {[
+              { id: 'chat',      label: 'Chat',      icon: MessageSquare },
+              { id: 'decisions', label: 'Decisions', icon: ListChecks },
+              { id: 'log',       label: 'Log',       icon: Brain },
+            ].map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setTab(id)} className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold transition-colors ${tab === id ? 'text-brand-400 border-b-2 border-brand-400' : 'text-zinc-500 hover:text-zinc-300'}`}>
                 <Icon className="w-3.5 h-3.5" />{label}
               </button>
             ))}
           </div>
+
+          {tab === 'chat' ? (
+            <div className="flex-1 flex flex-col min-h-0">
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-3 space-y-2 text-[12.5px]">
+                {chatMessages.length === 0
+                  ? <p className="text-zinc-600 italic text-center mt-4">The agent will say hi here once the hunt starts.</p>
+                  : chatMessages.map(m => (
+                      <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[85%] px-3 py-2 rounded-2xl leading-relaxed ${
+                          m.role === 'user'
+                            ? 'bg-brand-500/25 text-white rounded-br-sm'
+                            : 'bg-white/[0.06] text-zinc-100 rounded-bl-sm border border-white/[0.06]'
+                        }`}>
+                          {m.content}
+                        </div>
+                      </div>
+                    ))
+                }
+              </div>
+              <div className="p-2.5 border-t border-white/10 flex items-end gap-2">
+                <textarea
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendChat() } }}
+                  placeholder="Talk to the agent…"
+                  rows={1}
+                  className="flex-1 rounded-xl px-3 py-2 text-[12.5px] resize-none outline-none"
+                  style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', caretColor: '#fff', minHeight: 34, maxHeight: 80 }}
+                />
+                <button
+                  onClick={handleSendChat}
+                  disabled={!chatInput.trim() || chatBusy}
+                  className="flex items-center justify-center w-8 h-8 rounded-full disabled:opacity-40"
+                  style={{ background: chatInput.trim() ? '#5E6AD2' : 'rgba(255,255,255,0.08)' }}
+                  title="Send (Enter)"
+                >
+                  <Send className="w-3.5 h-3.5 text-white" />
+                </button>
+              </div>
+            </div>
+          ) : (
           <div ref={logRef} className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
             {tab === 'decisions' ? (
               decisions.length === 0 ? <p className="text-zinc-600 italic text-center mt-4">No decisions yet...</p>
@@ -299,6 +365,7 @@ export default function HuntView({ huntId, onClose }) {
               ))
             )}
           </div>
+          )}
         </div>
       </div>
 

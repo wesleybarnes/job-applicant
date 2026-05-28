@@ -53,6 +53,10 @@ class HuntSession:
         # Bumps each time the user answers "Continue" on a cost prompt so the
         # warning only fires once per ceiling chunk.
         self.cost_next_prompt_at: Optional[float] = None
+        # Persistent mid-hunt chat — user posts via /hunt/chat/{id}, agent drains
+        # at safe checkpoints and acknowledges via Haiku.
+        self._chat_pending: asyncio.Queue = asyncio.Queue()
+        self.chat_history: list[dict] = []   # [{role: 'user'|'agent', content, ts}]
 
     def emit(self, event: dict):
         self.events.put_nowait(event)
@@ -96,6 +100,42 @@ class HuntSession:
     def answer_question(self, answer: str):
         self._question_answer = answer
         self._question_event.set()
+
+    def submit_chat(self, content: str):
+        """Called by POST /hunt/chat/{id}. Records the user's message, echoes it
+        via SSE (so the user sees their own bubble immediately), and queues it
+        for the agent to drain at the next safe checkpoint."""
+        from datetime import datetime, timezone
+        text = (content or "").strip()
+        if not text:
+            return
+        msg = {"role": "user", "content": text[:2000], "ts": datetime.now(timezone.utc).isoformat()}
+        self.chat_history.append(msg)
+        self.emit({"type": "chat_message", **msg})
+        try:
+            self._chat_pending.put_nowait(text)
+        except Exception:
+            pass
+
+    def drain_chat_pending(self) -> list[str]:
+        """Non-blocking drain of all queued user messages, called by the agent."""
+        msgs: list[str] = []
+        while True:
+            try:
+                msgs.append(self._chat_pending.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        return msgs
+
+    def agent_reply(self, content: str):
+        """Record + emit an agent chat message. Used by _process_chat."""
+        from datetime import datetime, timezone
+        text = (content or "").strip()
+        if not text:
+            return
+        msg = {"role": "agent", "content": text[:2000], "ts": datetime.now(timezone.utc).isoformat()}
+        self.chat_history.append(msg)
+        self.emit({"type": "chat_message", **msg})
 
     def submit_credentials(self, payload: dict):
         """Resolve a pending credentials_required prompt. payload = {username, password, save}
@@ -283,6 +323,62 @@ class HybridHuntAgent:
                 return
             # Raise the bar so we don't prompt again until the next chunk is spent
             session.cost_next_prompt_at = session.cost_usd + ceiling_chunk
+
+    async def _process_chat(self, session: 'HuntSession', context: Optional[dict] = None) -> None:
+        """Drain any user chat messages and acknowledge with a brief Haiku reply.
+
+        Called at safe checkpoints (between jobs, between phases). Replies are
+        deliberately short — this is a co-pilot acknowledgement, not a deep
+        agent loop. Strong instructions still go through Pause → Prompt.
+        """
+        pending = session.drain_chat_pending()
+        if not pending:
+            return
+        # Build a tight context string from recent history + the new messages
+        recent = session.chat_history[-12:]
+        history_text = "\n".join(f"{m['role']}: {m['content']}" for m in recent)
+        ctx_bits = []
+        if context:
+            for k, v in context.items():
+                if v: ctx_bits.append(f"{k}={v}")
+        ctx_text = " · ".join(ctx_bits) or "(no current context)"
+        new_msgs = "\n".join(f"- {m}" for m in pending)
+        try:
+            resp = await self.client.messages.create(
+                model=settings.scoring_model,   # Haiku — fast + cheap for chat
+                max_tokens=160,
+                system=[{
+                    "type": "text",
+                    "text": (
+                        "You are Envia, an AI job-hunting co-pilot helping the user "
+                        "in real time while a hunt is running. Reply in 1-2 short sentences, "
+                        "first person, plain text only. Acknowledge what they just said, "
+                        "reference current context when relevant, and tell them what you'll "
+                        "do (or what you can't change mid-run). Never invent actions you "
+                        "haven't actually performed. If they want behavioral changes mid-run, "
+                        "remind them they can hit Pause → Prompt for stronger instructions."
+                    ),
+                    "cache_control": {"type": "ephemeral"},
+                }],
+                messages=[{
+                    "role": "user",
+                    "content": (
+                        f"Current hunt context: {ctx_text}\n\n"
+                        f"Chat so far:\n{history_text}\n\n"
+                        f"New message(s) from the user just now:\n{new_msgs}\n\n"
+                        f"Write your reply."
+                    ),
+                }],
+            )
+            await self._track_cost(session, settings.scoring_model, resp)
+            reply = "".join(b.text for b in resp.content if getattr(b, "type", None) == "text").strip()
+        except Exception:
+            reply = ""
+        if reply:
+            session.agent_reply(reply)
+        else:
+            # Don't leave the user hanging — at least a one-liner acknowledgement
+            session.agent_reply("Got it — I'll keep going and factor that in where I can.")
 
     async def _ask_question(self, session: 'HuntSession', message: str, options: Optional[list] = None) -> Optional[str]:
         """Emit a question event the frontend renders in its existing modal, then
@@ -1549,6 +1645,15 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                 if session._stopped:
                     return
 
+                # Co-pilot greeting — first chat message so the panel isn't empty
+                _name = (user.get('full_name') or '').split()[0] or 'there'
+                _roles = ', '.join(user.get('target_roles') or []) or 'roles matching your profile'
+                _locs  = ', '.join(user.get('target_locations') or []) or 'your target areas'
+                session.agent_reply(
+                    f"Hey {_name} — I'm scanning for {_roles} in {_locs}. "
+                    f"Talk to me anytime in this panel; I'll pick up your messages between actions."
+                )
+
                 # ── Phase 2: Build board list based on user profile ──────
                 # LinkedIn is only useful if logged in — guest gets walled on every job
                 locs = ' '.join(user.get('target_locations') or []).lower()
@@ -1591,6 +1696,8 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         break
 
                     await session.check_paused()
+                    # Drain any chat the user sent between boards
+                    await self._process_chat(session, {"phase": "between boards", "next_board": board})
                     roles     = user.get('target_roles') or []
                     query     = roles[0] if roles else 'Software Engineer'
                     locations = user.get('target_locations') or []
@@ -1734,6 +1841,17 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             break
                         if instruction:
                             session.emit({"type": "thinking", "message": f"Following your instruction: \"{instruction}\""})
+
+                        # Pick up any chat messages the user sent while we were on
+                        # the previous job, before we open the next one.
+                        await self._process_chat(session, {
+                            "phase": "between jobs",
+                            "next_title": job_title,
+                            "next_company": company,
+                            "applied_so_far": session.jobs_applied,
+                        })
+                        if session._stopped:
+                            break
 
                         # Co-pilot pre-apply narration: name the role, why we like it,
                         # and any deterministic concerns we spotted from the user's profile.
