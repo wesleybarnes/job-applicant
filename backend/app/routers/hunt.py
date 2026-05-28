@@ -36,6 +36,9 @@ class CredentialsRequest(BaseModel):
     save: bool = False        # store the password encrypted for future hunts
     skip: bool = False        # decline to log in to this site
 
+class ChatRequest(BaseModel):
+    message: str
+
 class InteractRequest(BaseModel):
     type: str                      # "click" | "type" | "key" | "scroll"
     x: Optional[float] = None     # viewport coords (0-1280)
@@ -217,6 +220,17 @@ async def answer_agent_question(hunt_id: int, body: AnswerRequest):
         raise HTTPException(status_code=404, detail="No active hunt session")
     session.answer_question(body.answer)
     return {"status": "answered"}
+
+
+@router.post("/chat/{hunt_id}")
+async def post_hunt_chat(hunt_id: int, body: ChatRequest):
+    """Mid-hunt chat — user posts a message; the agent will pick it up at the
+    next safe checkpoint (between jobs/boards/phases) and reply via SSE."""
+    session = get_hunt_session(hunt_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="No active hunt session")
+    session.submit_chat(body.message)
+    return {"status": "received"}
 
 
 @router.post("/credentials/{hunt_id}")
