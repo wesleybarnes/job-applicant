@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import {
   Crosshair, ChevronRight, CheckCircle, XCircle, Loader2, Sparkles, Pencil, X,
-  Bookmark, BookmarkCheck, ExternalLink, Target,
+  Bookmark, BookmarkCheck, ExternalLink, Target, RotateCcw,
 } from 'lucide-react'
 import { useAppUser } from '../App'
 import HuntView from '../components/HuntView'
 import {
   startHunt, listHuntSessions, getResumes,
   setUserGoals, updateMe,
-  getHuntSessionDetail, saveHuntJob,
+  getHuntSessionDetail, saveHuntJob, resurfaceHuntDecision,
 } from '../api/client'
 
 function formatDate(iso) {
@@ -144,6 +144,12 @@ export default function HuntPage() {
       setSaved(prev => ({ ...prev, [dec.url]: r }))
     } catch {}
     finally { setSavingUrl(null) }
+  }
+  // Resurface: forget a previous skip so the next hunt reconsiders this job.
+  const [resurfaced, setResurfaced] = useState({})   // job_url → true
+  const handleResurface = async (dec) => {
+    if (!dec.url || resurfaced[dec.url]) return
+    try { await resurfaceHuntDecision(dec.url); setResurfaced(prev => ({ ...prev, [dec.url]: true })) } catch {}
   }
 
   return (
@@ -367,7 +373,8 @@ export default function HuntPage() {
                           .slice()
                           .sort((a, b) => (b.match_score || 0) - (a.match_score || 0))
                           .map((d, i) => (
-                            <DecisionRow key={`dec-${i}`} dec={d} variant={d.decision} saved={saved[d.url]} saving={savingUrl === d.url} onSave={() => handleSaveDecision(d)} />
+                            <DecisionRow key={`dec-${i}`} dec={d} variant={d.decision} saved={saved[d.url]} saving={savingUrl === d.url} onSave={() => handleSaveDecision(d)}
+                              resurfaced={resurfaced[d.url]} onResurface={() => handleResurface(d)} />
                           ))}
                       </div>
                     </>
@@ -384,9 +391,10 @@ export default function HuntPage() {
   )
 }
 
-function DecisionRow({ dec, variant, saved, saving, onSave }) {
+function DecisionRow({ dec, variant, saved, saving, onSave, resurfaced, onResurface }) {
   const score = dec.match_score
   const isApply = variant === 'apply' || variant === 'submitted'
+  const isSkipped = variant === 'skip'
   return (
     <div className={`rounded-lg border px-3 py-2.5 flex items-start gap-3 ${variant === 'submitted' ? 'border-emerald-500/20 bg-emerald-500/[0.04]' : 'border-white/5 bg-white/[0.02]'}`}>
       <div className="min-w-0 flex-1">
@@ -404,6 +412,16 @@ function DecisionRow({ dec, variant, saved, saving, onSave }) {
           <a href={dec.url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-md text-ink-tertiary hover:text-ink-primary hover:bg-white/[0.05]">
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
+        )}
+        {dec.url && isSkipped && onResurface && (
+          <button
+            onClick={onResurface}
+            disabled={!!resurfaced}
+            title={resurfaced ? "I'll reconsider this one next hunt" : "Resurface — try this again next hunt"}
+            className={`p-1.5 rounded-md transition-colors ${resurfaced ? 'text-emerald-400 bg-emerald-500/10' : 'text-ink-tertiary hover:text-amber-300 hover:bg-amber-300/10'} disabled:opacity-60`}
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
         )}
         {dec.url && (
           <button

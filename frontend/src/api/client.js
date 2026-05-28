@@ -84,6 +84,8 @@ export const resumeHunt = (id, instruction) => api.post(`/hunt/resume/${id}`, { 
 export const interactWithHunt = (id, action) => api.post(`/hunt/interact/${id}`, action).then(r => r.data)
 export const submitHuntCredentials = (id, body) => api.post(`/hunt/credentials/${id}`, body).then(r => r.data)
 export const sendHuntChat = (id, message) => api.post(`/hunt/chat/${id}`, { message }).then(r => r.data)
+export const listMyHuntDecisions = (params) => api.get('/hunt/decisions', { params }).then(r => r.data)
+export const resurfaceHuntDecision = (job_url) => api.post('/hunt/decisions/resurface', { job_url }).then(r => r.data)
 
 // ─── Goals ──────────────────────────────────────────────────────────────────
 export const setUserGoals = (body) => api.post('/users/me/goals', body).then(r => r.data)

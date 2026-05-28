@@ -104,7 +104,14 @@ export default function HuntView({ huntId, onClose }) {
       case 'question': setQuestionData(event); addLog({ type: 'confirm_required', message: `❓ ${event.message}` }); break
       case 'credentials_required':
         setCredentialsData(event)
-        setCredForm({ username: event.saved_username || '', password: '', save: true, showPassword: false })
+        setCredForm({
+          mode: 'password',
+          username: event.saved_username || '',
+          password: '',
+          cookie: '',
+          save: true,
+          showPassword: false,
+        })
         addLog({ type: 'confirm_required', message: `🔒 Sign in to ${event.site} to continue` })
         break
       case 'confirm_required': setStatus('confirm'); setConfirmData(event); addLog({ type: 'confirm_required', message: `⏸ Review: ${event.job_title} at ${event.company}` }); break
@@ -124,6 +131,14 @@ export default function HuntView({ huntId, onClose }) {
   const handleAnswerQuestion = async (answer) => { const ans = answer || questionAnswer; setQuestionData(null); setQuestionAnswer(''); await api.post(`/hunt/answer/${huntId}`, { answer: ans }) }
 
   const handleSubmitCredentials = async () => {
+    // Cookie path: paste the li_at cookie, skip the login form + 2FA entirely
+    if (credForm.mode === 'cookie') {
+      if (!credForm.cookie?.trim()) return
+      const body = { cookie_li_at: credForm.cookie.trim(), save: !!credForm.save }
+      setCredentialsData(null)
+      try { await submitHuntCredentials(huntId, body) } catch {}
+      return
+    }
     if (!credForm.username || !credForm.password) return
     const body = { username: credForm.username, password: credForm.password, save: !!credForm.save }
     setCredentialsData(null)
@@ -404,30 +419,72 @@ export default function HuntView({ huntId, onClose }) {
               <p className="text-zinc-300 text-sm leading-relaxed">
                 {credentialsData.message || `Enter your ${credentialsData.site} credentials so the hunt can continue.`}
               </p>
-              <input
-                type="email"
-                value={credForm.username}
-                onChange={e => setCredForm(c => ({ ...c, username: e.target.value }))}
-                placeholder={`${credentialsData.site} email or username`}
-                autoFocus
-                className="w-full rounded-xl px-3 py-2 text-sm outline-none"
-                style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
-              />
-              <div className="relative">
-                <input
-                  type={credForm.showPassword ? 'text' : 'password'}
-                  value={credForm.password}
-                  onChange={e => setCredForm(c => ({ ...c, password: e.target.value }))}
-                  onKeyDown={e => { if (e.key === 'Enter' && credForm.username && credForm.password) handleSubmitCredentials() }}
-                  placeholder="Password"
-                  className="w-full rounded-xl px-3 py-2 pr-9 text-sm outline-none"
-                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
-                />
-                <button type="button" onClick={() => setCredForm(c => ({ ...c, showPassword: !c.showPassword }))}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200">
-                  {credForm.showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
+
+              {/* Mode toggle — only show the cookie option for LinkedIn (where 2FA is the pain) */}
+              {credentialsData.site_key === 'linkedin' && (
+                <div className="flex items-center gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.08]">
+                  <button
+                    onClick={() => setCredForm(c => ({ ...c, mode: 'password' }))}
+                    className={`flex-1 text-[11.5px] py-1.5 rounded-lg transition-colors ${credForm.mode !== 'cookie' ? 'bg-white/[0.08] text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                  >Password</button>
+                  <button
+                    onClick={() => setCredForm(c => ({ ...c, mode: 'cookie' }))}
+                    className={`flex-1 text-[11.5px] py-1.5 rounded-lg transition-colors ${credForm.mode === 'cookie' ? 'bg-white/[0.08] text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                  >Cookie · skips 2FA</button>
+                </div>
+              )}
+
+              {credForm.mode === 'cookie' ? (
+                <>
+                  <textarea
+                    value={credForm.cookie}
+                    onChange={e => setCredForm(c => ({ ...c, cookie: e.target.value }))}
+                    placeholder="Paste your LinkedIn li_at cookie value here…"
+                    rows={3}
+                    autoFocus
+                    className="w-full rounded-xl px-3 py-2 text-[12px] font-mono outline-none resize-none"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
+                  />
+                  <details className="text-[11px] text-zinc-500">
+                    <summary className="cursor-pointer hover:text-zinc-300 select-none">How do I find this?</summary>
+                    <ol className="list-decimal pl-5 mt-2 space-y-1 leading-relaxed text-zinc-400">
+                      <li>Sign into linkedin.com in your normal browser.</li>
+                      <li>Open DevTools (right-click → Inspect → "Application" tab).</li>
+                      <li>Storage → Cookies → <code>https://www.linkedin.com</code>.</li>
+                      <li>Find the row named <code>li_at</code> and copy its <strong>Value</strong>.</li>
+                      <li>Paste it above. We store it Fernet-encrypted.</li>
+                    </ol>
+                  </details>
+                </>
+              ) : (
+                <>
+                  <input
+                    type="email"
+                    value={credForm.username}
+                    onChange={e => setCredForm(c => ({ ...c, username: e.target.value }))}
+                    placeholder={`${credentialsData.site} email or username`}
+                    autoFocus
+                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
+                  />
+                  <div className="relative">
+                    <input
+                      type={credForm.showPassword ? 'text' : 'password'}
+                      value={credForm.password}
+                      onChange={e => setCredForm(c => ({ ...c, password: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter' && credForm.username && credForm.password) handleSubmitCredentials() }}
+                      placeholder="Password"
+                      className="w-full rounded-xl px-3 py-2 pr-9 text-sm outline-none"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: '#fff', caretColor: '#fff' }}
+                    />
+                    <button type="button" onClick={() => setCredForm(c => ({ ...c, showPassword: !c.showPassword }))}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200">
+                      {credForm.showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </>
+              )}
+
               <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -435,15 +492,17 @@ export default function HuntView({ huntId, onClose }) {
                   onChange={e => setCredForm(c => ({ ...c, save: e.target.checked }))}
                   className="accent-brand-500"
                 />
-                Save these credentials (encrypted) so future hunts skip the login
+                Save this {credForm.mode === 'cookie' ? 'cookie' : 'login'} (encrypted) so future hunts skip the login
               </label>
               <p className="text-[11px] text-zinc-500 leading-snug">
-                Stored Fernet-encrypted on the server; cookies cached so we usually skip the login next time. Tip: you can also click <em>Skip</em> and sign in manually in the browser using Pause → Click.
+                {credForm.mode === 'cookie'
+                  ? 'Cookie login skips the form entirely — no 2FA challenge. Cookies expire eventually; you\'ll re-paste when that happens.'
+                  : 'Stored Fernet-encrypted on the server; cookies also cached so we usually skip the login next time.'}
               </p>
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={handleSubmitCredentials}
-                  disabled={!credForm.username || !credForm.password}
+                  disabled={credForm.mode === 'cookie' ? !credForm.cookie?.trim() : (!credForm.username || !credForm.password)}
                   className="btn-primary flex-1 py-2 text-sm rounded-xl disabled:opacity-40"
                 >Sign in</button>
                 <button
