@@ -48,6 +48,11 @@ class HuntSession:
         self.seen_urls: set   = seen_urls or set()
         self.auto_apply: bool = auto_apply
         self.page             = None   # set once Playwright page is created
+        # Running Claude $ spent on this session (Haiku scoring + Sonnet form fills)
+        self.cost_usd: float = 0.0
+        # Bumps each time the user answers "Continue" on a cost prompt so the
+        # warning only fires once per ceiling chunk.
+        self.cost_next_prompt_at: Optional[float] = None
 
     def emit(self, event: dict):
         self.events.put_nowait(event)
@@ -127,6 +132,30 @@ def create_hunt_session(hunt_id: int, user_id: int, seen_urls: set = None, auto_
 
 def remove_hunt_session(hunt_id: int):
     _hunt_sessions.pop(hunt_id, None)
+
+
+# ─── Cost tracking ────────────────────────────────────────────────────────
+# Per-million-token USD prices for the models we call in the hunt. Bump these
+# when Anthropic moves their pricing; cost telemetry + the per-session ceiling
+# rely on them.
+_MODEL_PRICES_PER_M = {
+    "claude-sonnet-4-6":           {"in": 3.00, "out": 15.00, "cache_w": 3.75, "cache_r": 0.30},
+    "claude-haiku-4-5-20251001":   {"in": 0.80, "out":  4.00, "cache_w": 1.00, "cache_r": 0.08},
+    # Fallback for anything else — overstate slightly so we never under-bill.
+    "default":                     {"in": 3.00, "out": 15.00, "cache_w": 3.75, "cache_r": 0.30},
+}
+
+
+def _usage_cost_usd(model: str, usage) -> float:
+    """Convert an Anthropic `usage` object into a USD cost using the table above."""
+    if not usage:
+        return 0.0
+    p = _MODEL_PRICES_PER_M.get(model) or _MODEL_PRICES_PER_M["default"]
+    inp  = getattr(usage, "input_tokens", 0) or 0
+    out  = getattr(usage, "output_tokens", 0) or 0
+    cw   = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    cr   = getattr(usage, "cache_read_input_tokens", 0) or 0
+    return (inp * p["in"] + out * p["out"] + cw * p["cache_w"] + cr * p["cache_r"]) / 1_000_000
 
 
 # ─── Visual Hunt Agent ─────────────────────────────────────────────────────
@@ -226,6 +255,44 @@ class HybridHuntAgent:
         """
         await asyncio.sleep(seconds * self.speed)
 
+    # ── Cost tracking + ceiling prompt ───────────────────────────────────
+
+    async def _track_cost(self, session: 'HuntSession', model: str, resp) -> None:
+        """Charge an Anthropic response to the session, emit a cost_update, and
+        prompt the user once the running total crosses each ceiling chunk."""
+        try:
+            spent = _usage_cost_usd(model, getattr(resp, "usage", None))
+        except Exception:
+            spent = 0.0
+        if spent <= 0:
+            return
+        session.cost_usd += spent
+        session.emit({"type": "cost_update", "cost_usd": round(session.cost_usd, 4)})
+        # First-call setup: arm the next-prompt threshold once we have a tracker.
+        ceiling_chunk = float(settings.hunt_cost_ceiling_usd or 0.0)
+        if ceiling_chunk > 0 and session.cost_next_prompt_at is None:
+            session.cost_next_prompt_at = ceiling_chunk
+        if ceiling_chunk > 0 and session.cost_usd >= (session.cost_next_prompt_at or 0):
+            answer = await self._ask_question(
+                session,
+                f"This hunt has used ${session.cost_usd:.2f} of Claude — keep going for another ${ceiling_chunk:.2f}?",
+                options=["Continue", "Stop"],
+            )
+            if (answer or "").strip().lower().startswith("stop") or session._stopped:
+                session.stop()
+                return
+            # Raise the bar so we don't prompt again until the next chunk is spent
+            session.cost_next_prompt_at = session.cost_usd + ceiling_chunk
+
+    async def _ask_question(self, session: 'HuntSession', message: str, options: Optional[list] = None) -> Optional[str]:
+        """Emit a question event the frontend renders in its existing modal, then
+        await the answer. The frontend already handles `question` (HuntView.jsx)."""
+        session._question_event.clear()
+        session._question_answer = None
+        session.emit({"type": "question", "message": message, "options": options or []})
+        await session._question_event.wait()
+        return session._question_answer
+
     # ── User profile text (cached across Haiku calls) ────────────────────
     def _profile_text(self, user: dict) -> str:
         roles     = ', '.join(user.get('target_roles') or []) or 'relevant tech roles'
@@ -255,7 +322,7 @@ Summary: {user.get('summary') or 'N/A'}
 Pre-written answers: {custom}""".strip()
 
     # ── Batch job scoring (Haiku) ────────────────────────────────────────
-    async def _batch_score_jobs(self, jobs: list[dict], user: dict) -> list[dict]:
+    async def _batch_score_jobs(self, jobs: list[dict], user: dict, session: Optional['HuntSession'] = None) -> list[dict]:
         if not jobs:
             return []
         job_list = "\n".join(
@@ -280,6 +347,8 @@ Pre-written answers: {custom}""".strip()
                 }],
                 extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
             )
+            if session is not None:
+                await self._track_cost(session, settings.scoring_model, resp)
             text = resp.content[0].text.strip()
             match = re.search(r'\[.*\]', text, re.DOTALL)
             if match:
@@ -1074,6 +1143,9 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                     tools=FORM_FILL_TOOLS,
                     messages=[{"role": "user", "content": prompt}],
                 )
+                await self._track_cost(session, settings.form_fill_model, resp)
+                if session._stopped:
+                    return {"fields_filled": all_fields_filled, "concerns": all_concerns + ["Stopped at cost ceiling"]}
             except Exception as e:
                 session.emit({"type": "action", "message": f"AI form analysis failed: {str(e)[:60]}"})
                 all_concerns.append("AI could not analyze form")
@@ -1588,7 +1660,7 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                             break
                         batch = new_jobs[i:i+BATCH]
                         session.emit({"type": "action", "message": f"Evaluating batch {i//BATCH + 1}: {len(batch)} jobs..."})
-                        await self._batch_score_jobs(batch, user)
+                        await self._batch_score_jobs(batch, user, session=session)
 
                     new_jobs.sort(key=lambda j: j.get('score', 0), reverse=True)
 
@@ -1663,10 +1735,55 @@ and upload_resume if there's a file upload. When all fields are filled, call for
                         if instruction:
                             session.emit({"type": "thinking", "message": f"Following your instruction: \"{instruction}\""})
 
-                        # Navigate to job page (user sees the listing)
+                        # Co-pilot pre-apply narration: name the role, why we like it,
+                        # and any deterministic concerns we spotted from the user's profile.
                         score = job.get('score', 0)
                         reason = job.get('reason', '')
-                        session.emit({"type": "thinking", "message": f"Opening {job_title} at {company} (score: {score}%). {reason}"})
+                        job_loc = (job.get('location') or '').strip()
+
+                        narration = (
+                            f"Pulling up the {job_title} role at {company}"
+                            + (f" in {job_loc}" if job_loc else "")
+                            + f" — match {score}%."
+                            + (f" {reason}" if reason else "")
+                        )
+                        session.emit({"type": "thinking", "message": narration})
+
+                        # Deterministic concerns — no extra LLM call. Only ask the user
+                        # when something concrete looks off; otherwise stay quiet so we
+                        # don't nag on every job.
+                        concerns: list[str] = []
+                        try:
+                            jmax = job.get('salary_max') or 0
+                            umin = user.get('salary_min') or 0
+                            if jmax and umin and jmax < umin:
+                                concerns.append(
+                                    f"pays up to ${int(jmax):,} but you set a floor of ${int(umin):,}"
+                                )
+                        except Exception:
+                            pass
+                        try:
+                            targets = [t.lower() for t in (user.get('target_locations') or [])]
+                            jl = job_loc.lower()
+                            if (
+                                targets and jl and jl != "remote"
+                                and not any(t in jl or jl in t for t in targets)
+                                and not user.get('willing_to_relocate')
+                            ):
+                                concerns.append(
+                                    f"location is {job_loc}, outside your targets, and you said you're not relocating"
+                                )
+                        except Exception:
+                            pass
+                        if concerns:
+                            answer = await self._ask_question(
+                                session,
+                                "Heads up — " + " and ".join(concerns) + ". Apply anyway, or skip?",
+                                options=["Apply anyway", "Skip"],
+                            )
+                            if (answer or "").strip().lower().startswith("skip") or session._stopped:
+                                session.emit({"type": "thinking", "message": f"Skipping {job_title} at {company} based on your call."})
+                                continue
                         try:
                             await page.goto(job_url, wait_until="domcontentloaded", timeout=15000)
                             await self._pause(1.5)
